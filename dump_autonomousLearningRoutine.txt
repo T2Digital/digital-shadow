@@ -1,0 +1,52 @@
+export const autonomousLearningRoutine = async (userId: string, history: any[], userProfile: UserProfile | undefined) => {
+    if (!userProfile || history.length < 3) return;
+    
+    const now = Date.now();
+    const lastRunStr = localStorage.getItem(`last_autonomous_learning_${userId}`);
+    // Throttle learning to once every 2 minutes
+    if (lastRunStr && (now - parseInt(lastRunStr) < 120000)) return;
+    
+    localStorage.setItem(`last_autonomous_learning_${userId}`, now.toString());
+
+    try {
+        const recentHistory = history.slice(-5).map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.text}`).join('\n');
+        
+        const prompt = `Analyze the following recent conversation between the user and the assistant.
+Extract ANY specific user preferences, recurring habits, or permanent facts that the assistant should remember about the user for future interactions (e.g., preferred response length, tone, favorite topics, schedules).
+If the user mentions a preference (e.g., "I prefer brief news", "always remind me at 8 AM"), explicitly state it.
+DO NOT output anything if the conversation is just casual chat or questions without personal preferences.
+Only output the extracted facts/preferences as a bulleted list. If there is nothing new or significant to learn that isn't already in Memory, output exactly "NO_NEW_LEARNING".
+
+Current Long-Term Memory:
+${userProfile.longTermMemory || 'None'}
+
+Conversation:
+${recentHistory}`;
+        
+        const result = await getAI().models.generateContent({
+            model: 'gemini-flash-latest', // fast model for background tasks
+            contents: prompt
+        });
+        
+        const extracted = result.text?.trim();
+        if (extracted && extracted !== "NO_NEW_LEARNING" && !extracted.includes("NO_NEW_LEARNING")) {
+            const newMemories = extracted.split('\n').map(l => l.replace(/^[-*•]\s*/, '').trim()).filter(Boolean);
+            if (newMemories.length > 0) {
+                 const currentMem = userProfile.longTermMemory || "";
+                 userProfile.longTermMemory = currentMem ? `${currentMem} | ${newMemories.join(' | ')}` : newMemories.join(' | ');
+                 await shadowDB.saveProfile(userProfile);
+                 
+                 // Try to live update the UI via the global store if possible
+                 try {
+                     const { useAppStore } = await import('./store');
+                     useAppStore.getState().setUser({...userProfile});
+                 } catch(e) {}
+                 
+                 console.log("🧠 Autonomous Learning extracted:", newMemories);
+            }
+        }
+        
+    } catch (e) {
+        console.error("Autonomous learning error:", e);
+    }
+};

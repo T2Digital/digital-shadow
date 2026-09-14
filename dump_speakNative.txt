@@ -1,0 +1,163 @@
+export const speakNative = async (text: string, voice: string = 'male', onEnd?: () => void) => {
+    const cleanText = text.replace(/[*_#\-`]/g, ' ').replace(/http\S+/g, '').trim();
+    if (!cleanText || cleanText.length < 1) { onEnd?.(); return; }
+
+    if (Capacitor.isNativePlatform()) {
+        try {
+            let selectedVoiceUrl;
+            try {
+                const { voices } = await TextToSpeech.getSupportedVoices();
+                const arVoices = voices.filter((v: any) => v.lang.toLowerCase().includes('ar'));
+                if (arVoices.length > 0) {
+                    if (voice === 'female') {
+                        const fb = arVoices.find((v: any) => /(laila|salma|zeina|female)/i.test(v.name) && v.lang.includes('EG')) || arVoices.find((v: any) => /(laila|salma|zeina|female)/i.test(v.name)) || arVoices.find((v: any) => v.lang === 'ar-EG');
+                        if (fb) selectedVoiceUrl = fb.voiceURI || (fb as any).id;
+                    } else {
+                        const mb = arVoices.find((v: any) => /(maged|tariq|male|majed)/i.test(v.name) && v.lang.includes('EG')) || arVoices.find((v: any) => /(maged|tariq|male|majed)/i.test(v.name)) || arVoices.find((v: any) => v.lang === 'ar-EG');
+                        if (mb) selectedVoiceUrl = mb.voiceURI || (mb as any).id;
+                    }
+                }
+            } catch (e) {
+                console.warn("Could not fetch native voices", e);
+            }
+
+            await TextToSpeech.speak({
+                text: cleanText,
+                lang: 'ar-EG',
+                rate: 0.98,
+                pitch: 1.0,
+                volume: 1.0,
+                category: 'ambient',
+                voice: selectedVoiceUrl,
+            });
+            window.dispatchEvent(new CustomEvent('shadow_voice_ended'));
+            onEnd?.();
+            return;
+        } catch (e) {
+            console.warn("Capacitor TTS Failed:", e);
+            // fallback to web if possible
+        }
+    }
+
+    if (!('speechSynthesis' in window)) { 
+        (window as any).dispatchEvent(new CustomEvent('shadow_voice_ended'));
+        onEnd?.(); 
+        return; 
+    }
+    
+    // 1. Force Cancel & Resume State
+    window.speechSynthesis.cancel();
+    if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+
+    // 3. Create Utterance
+    const utter = new SpeechSynthesisUtterance(cleanText);
+    // @ts-ignore
+    window.shadowUtterance = utter; // Global ref to prevent GC
+
+    utter.rate = 1.0; 
+    utter.pitch = voice === 'female' ? 1.2 : 1.0; // Slightly higher pitch for female as fallback
+    utter.lang = 'ar-EG'; 
+    utter.volume = 1.0;
+
+    // Try finding an appropriate voice
+    const voices = window.speechSynthesis.getVoices();
+    const arVoices = voices.filter(v => v.lang.toLowerCase().includes('ar'));
+    
+    // Advanced Voice Selection: Prioritize high-quality, local, Egyptian human-like voices
+    if (arVoices.length > 0) {
+        let selectedVoice: SpeechSynthesisVoice | undefined;
+
+        if (voice === 'female') {
+            // Priority: Laila, Salma, Zeina (Apple/Google high quality female), then ar-EG local
+            selectedVoice = arVoices.find(v => /(laila|salma|zeina|female)/i.test(v.name) && v.lang.includes('EG')) ||
+                            arVoices.find(v => /(laila|salma|zeina|female)/i.test(v.name)) ||
+                            arVoices.find(v => /(local|-x-)/i.test(v.name) && v.lang.includes('EG')) || // Android HQ local
+                            arVoices.find(v => v.lang === 'ar-EG') ||
+                            arVoices[0];
+        } else {
+            // Priority: Maged, Tariq (Apple high quality male), then ar-EG local
+            selectedVoice = arVoices.find(v => /(maged|tariq|male|majed)/i.test(v.name) && v.lang.includes('EG')) ||
+                            arVoices.find(v => /(maged|tariq|male|majed)/i.test(v.name)) ||
+                            arVoices.find(v => /(local|-x-)/i.test(v.name) && v.lang.includes('EG') && !/female|zeina|salma/i.test(v.name)) ||
+                            arVoices.find(v => v.lang === 'ar-EG') ||
+                            arVoices[arVoices.length - 1];
+        }
+
+        if (selectedVoice) {
+            utter.voice = selectedVoice;
+            console.log(`[Offline TTS] Selected Edge Voice: ${selectedVoice.name} (${selectedVoice.lang})`);
+        }
+    }
+
+    // 4. Handlers
+    utter.onend = () => {
+        // @ts-ignore
+        window.shadowUtterance = null;
+        if (resumeInterval) { clearInterval(resumeInterval); resumeInterval = null; }
+        window.dispatchEvent(new CustomEvent('shadow_voice_ended'));
+        onEnd?.();
+    };
+
+    utter.onerror = (e) => {
+        // Ignore interruption errors which happen when we cancel
+        if (e.error !== 'interrupted' && e.error !== 'canceled') {
+            console.warn("TTS Error:", e);
+        }
+        // @ts-ignore
+        window.shadowUtterance = null;
+        if (resumeInterval) { clearInterval(resumeInterval); resumeInterval = null; }
+        
+        // Only trigger onEnd if it wasn't cancelled intentionally
+        if (e.error !== 'canceled' && e.error !== 'interrupted') onEnd?.();
+    };
+
+    // 5. Execution Logic
+    let spoken = false;
+    const executeSpeak = () => {
+        if (spoken) return;
+        spoken = true;
+
+        const voices = window.speechSynthesis.getVoices();
+        // Try to find a good Arabic voice (Google preferred for quality)
+        const preferred = voices.find(v => v.lang.includes('ar') && v.name.includes('Google')) || 
+                          voices.find(v => v.lang.includes('ar'));
+        
+        if (preferred) utter.voice = preferred;
+
+        // Double check pause state
+        if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+        
+        window.speechSynthesis.speak(utter);
+        
+        // Chrome Long Text Fix: Periodically pause/resume to keep the engine alive
+        if (cleanText.length > 80) {
+            if (resumeInterval) clearInterval(resumeInterval);
+            resumeInterval = setInterval(() => {
+                if (!window.speechSynthesis.speaking) {
+                    clearInterval(resumeInterval);
+                    resumeInterval = null;
+                } else {
+                    window.speechSynthesis.pause();
+                    window.speechSynthesis.resume();
+                }
+            }, 10000); // 10s keep-alive
+        }
+    };
+
+    // 6. Voice Loading Strategy
+    // Chrome loads voices asynchronously. We must wait if the list is empty.
+    if (window.speechSynthesis.getVoices().length === 0) {
+        window.speechSynthesis.onvoiceschanged = () => {
+            executeSpeak();
+            window.speechSynthesis.onvoiceschanged = null;
+        };
+        // Fallback: If event never fires (some mobile browsers), speak anyway after 1s
+        setTimeout(executeSpeak, 1000);
+    } else {
+        // Slight delay to ensure the previous 'cancel()' has propagated
+        setTimeout(executeSpeak, 50);
+    }
+};
+
+// --- TOOLS DEFINITION ---
+import { actionTools } from './toolsConfig';

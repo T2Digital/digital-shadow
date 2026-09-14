@@ -1,0 +1,47 @@
+export const generateMp3FromShadowVoice = async (text: string, voice: string): Promise<{file: File, base64: string} | null> => {
+    let base64 = audioCache.get(text);
+    if (!base64) {
+        base64 = await shadowDB.getAudioSegment(text) || undefined;
+    }
+    if (!base64) {
+        base64 = await getShadowVoice(text, voice);
+        if (base64) {
+            audioCache.set(text, base64);
+            shadowDB.saveAudioSegment(text, base64);
+        }
+    }
+    if (!base64) return null;
+
+    let u8: Uint8Array;
+    try {
+        const res = await fetch(`data:application/octet-stream;base64,${base64}`);
+        const buffer = await res.arrayBuffer();
+        u8 = new Uint8Array(buffer);
+    } catch (e) {
+        // Fallback if fetch fails
+        const byteCharacters = atob(base64);
+        u8 = new Uint8Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+            u8[i] = byteCharacters.charCodeAt(i);
+        }
+    }
+    
+    // FAST PATH: Return WAV format to skip extremely slow lamejs mp3 encoding
+    const dataBytes = u8.length % 2 === 0 ? u8.length : u8.length - 1;
+    const u8Even = new Uint8Array(u8.buffer, 0, dataBytes);
+    const bufferWav = new ArrayBuffer(44 + dataBytes);
+    const view = new DataView(bufferWav);
+    
+    const setUint16 = (pos: number, data: number) => view.setUint16(pos, data, true);
+    const setUint32 = (pos: number, data: number) => view.setUint32(pos, data, true);
+    
+    setUint32(0, 0x46464952); setUint32(4, 36 + dataBytes); setUint32(8, 0x45564157);
+    setUint32(12, 0x20746d66); setUint32(16, 16); setUint16(20, 1); setUint16(22, 1);
+    setUint32(24, 24000); setUint32(28, 24000 * 2); setUint16(32, 2); setUint16(34, 16);
+    setUint32(36, 0x61746164); setUint32(40, dataBytes);
+    new Uint8Array(bufferWav, 44).set(u8Even);
+    
+    const parsedFile = new File([new Blob([bufferWav], { type: 'audio/wav' })], 'shadow-voice.wav', { type: 'audio/wav' });
+    
+    return { file: parsedFile, base64 };
+};

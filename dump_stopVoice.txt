@@ -1,0 +1,15 @@
+export const stopVoice = async () => { 
+    if (currentSource) { try { currentSource.stop(); } catch {} currentSource = null; } 
+    if (resumeInterval) { clearInterval(resumeInterval); resumeInterval = null; }
+    
+    if (Capacitor.isNativePlatform()) {
+        try { await TextToSpeech.stop(); } catch {}
+    } else if ('speechSynthesis' in window) { 
+        window.speechSynthesis.cancel(); 
+    }
+    
+    // @ts-ignore
+    window.shadowUtterance = null;
+};
+
+// --- ROBUST NATIVE TTS ENGINE ---

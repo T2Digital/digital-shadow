@@ -1,0 +1,55 @@
+41:    return new Promise((resolve) => {
+65:    if (!text) return null;
+67:    return parts.map((part, index) => {
+69:            return <strong key={index} className="text-purple-400 font-bold">{part.slice(2, -2)}</strong>;
+71:        return part;
+104:      return () => {
+152:    return () => {
+167:      return () => clearInterval(interval);
+211:          return () => clearTimeout(timer);
+219:      return () => {
+230:      return () => {
+254:      if (isTito) return `مرحباً تيتو (الماستر)`;
+255:      if (currentUser.email === 'GUEST') return "مرحباً ضيف الظل";
+256:      if (currentUser.affiliate?.isMarketer && currentUser.tier === 'lite') return `مرحباً ${currentUser.name.split(' ')[0]} (شريك)`;
+257:      return `مرحباً ${currentUser.name.split(' ')[0]} (عضو نخبة)`;
+280:                      return [...newMsgs, ...prev].sort((a,b) => a.timestamp - b.timestamp);
+293:                      if (prev.some(m => m.timestamp === newMsg.timestamp)) return prev;
+294:                      return [...prev, newMsg].sort((a,b) => a.timestamp - b.timestamp);
+299:      return () => { 
+320:      return () => window.removeEventListener('autonomous_message_received', handleAutonomousMessage);
+326:      return () => window.removeEventListener('shadow_audio_level', handleAudioLevel);
+373:      if (shouldContinueListeningRef.current || appStatusRef.current === 'speaking') return;
+376:      if (!SpeechRecognition) return;
+388:          if (shouldContinueListeningRef.current || isSubmittingRef.current || appStatusRef.current === 'speaking') return;
+437:      return () => clearTimeout(timer);
+465:    if (isSubmittingRef.current) return;
+498:    if (isLimitReached || isSubmittingRef.current) return;
+653:    if (isSubmittingRef.current || (isLimitReached && !ignoreLimit)) return;
+673:        return; 
+1272:                              return new Promise((resolve, reject) => {
+1406:              return;
+1527:      if (playingMessageId === msg.id) { handleStopPlayback(); return; } 
+1625:      if (!card) return; 
+1628:          return;
+1630:      if (card.cardType === 'business_doc') { window.print(); return; }
+1642:      if (type === 'task_success') return <CheckCircle className="w-6 h-6 text-emerald-400" />;
+1643:      if (type === 'internal_nav') return <Layout className="w-6 h-6 text-purple-400" />;
+1644:      if (type === 'business_doc') return <Printer className="w-6 h-6 text-white" />;
+1645:      if (type === 'system_terminal') return <Terminal className="w-6 h-6 text-white" />;
+1647:          if (number === 'chat') return <MessageCircle className="w-6 h-6 text-green-400" />;
+1648:          if (number === 'video') return <Video className="w-6 h-6 text-red-400" />;
+1649:          if (number === 'phone') return <PhoneCall className="w-6 h-6 text-blue-400" />;
+1650:          if (number === 'car') return <Car className="w-6 h-6 text-white" />;
+1651:          if (number === 'search') return <Search className="w-6 h-6 text-cyan-400" />;
+1652:          if (number === 'hotel') return <Hotel className="w-6 h-6 text-amber-400" />;
+1653:          if (number === 'map') return <MapPin className="w-6 h-6 text-emerald-400" />;
+1654:          if (number === 'calculator') return <Calculator className="w-6 h-6 text-orange-400" />;
+1655:          return <ExternalLink className="w-6 h-6 text-blue-400" />;
+1657:      return <ExternalLink className="w-6 h-6 text-white" />;
+1661:      return renderChatCard(card, i, currentUser, handleSend, setSelectedWorkspaceFile);
+1665:    if ((m as any).isHidden) return false;
+1666:    if (!m.text && (!m.uiCards || m.uiCards.length === 0)) return false;
+1667:    if (!isSearchActive || !searchQuery.trim()) return true;
+1668:    return m.text.toLowerCase().includes(searchQuery.toLowerCase());
+1671:  return (

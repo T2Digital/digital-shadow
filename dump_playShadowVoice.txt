@@ -1,0 +1,76 @@
+export const playShadowVoice = async (text: string, voice: string, existing?: string, onEnded?: () => void) => {
+    stopVoice();
+    const ctx = resumeAudioContext();
+    
+    if (!ctx) { 
+        speakNative(text, voice, onEnded);
+        return; 
+    }
+
+    try {
+        let base64 = existing;
+        if (!base64 && audioCache.has(text)) base64 = audioCache.get(text);
+        if (!base64) base64 = await shadowDB.getAudioSegment(text) || undefined;
+        
+        if (!base64) {
+            base64 = await getShadowVoice(text, voice);
+            if (base64) {
+                if (audioCache.size >= 50) {
+                    const firstKey = audioCache.keys().next().value;
+                    if (firstKey) audioCache.delete(firstKey);
+                }
+                audioCache.set(text, base64);
+                shadowDB.saveAudioSegment(text, base64);
+            }
+        }
+
+        if (!base64) { 
+            speakNative(text, voice, onEnded);
+            return; 
+        }
+        
+        const buffer = await decodeAudioData(decode(base64), ctx);
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        
+        // Add Analyser for lip-sync and face reactivity
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        analyser.connect(ctx.destination);
+        
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        let animationFrame: number;
+        
+        const updateAudioLevel = () => {
+            if (!currentSource) return;
+            analyser.getByteFrequencyData(dataArray);
+            
+            // Calculate average level
+            let sum = 0;
+            for(let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i];
+            }
+            const average = sum / dataArray.length;
+            const normalizedLevel = Math.min(1, average / 128); // 0 to 1
+            
+            window.dispatchEvent(new CustomEvent('shadow_audio_level', { detail: { level: normalizedLevel } }));
+            animationFrame = requestAnimationFrame(updateAudioLevel);
+        };
+        
+        source.onended = () => { 
+            currentSource = null; 
+            cancelAnimationFrame(animationFrame);
+            window.dispatchEvent(new CustomEvent('shadow_audio_level', { detail: { level: 0 } }));
+            window.dispatchEvent(new CustomEvent('shadow_voice_ended'));
+            onEnded?.(); 
+        };
+        
+        source.start(0);
+        currentSource = source;
+        updateAudioLevel();
+    } catch (e) { 
+        console.error("Voice Playback Error:", e); 
+        speakNative(text, voice, onEnded);
+    }
+};

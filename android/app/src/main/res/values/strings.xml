@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Shadow OS (الظل)</string>
+    <string name="title_activity_main">Shadow OS (الظل)</string>
+    <string name="package_name">com.shadow.os</string>
+    <string name="custom_url_scheme">com.shadow.os</string>
+</resources>

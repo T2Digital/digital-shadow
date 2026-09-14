@@ -1,0 +1,93 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile data",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "shadowName": { "type": "string" },
+        "voicePreference": { "type": "string" },
+        "tier": { "type": "string" },
+        "status": { "type": "string" },
+        "joinedAt": { "type": "number" },
+        "referredBy": { "type": "string" },
+        "subscriptionCycle": { "type": "string" },
+        "lastPulseReceived": { "type": "number" }
+      },
+      "required": ["email", "name", "tier", "status", "joinedAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Chat message",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "role": { "type": "string" },
+        "text": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["userId", "role", "text", "timestamp"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "Scheduled task or reminder",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "task": { "type": "string" },
+        "time": { "type": "string" },
+        "executionTime": { "type": "number" },
+        "category": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["userId", "task", "time", "category", "status"]
+    },
+    "Fact": {
+      "title": "Fact",
+      "description": "Memory fact",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "fact": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["userId", "fact", "timestamp"]
+    },
+    "SystemRules": {
+      "title": "SystemRules",
+      "description": "Global system rules",
+      "type": "object",
+      "properties": {
+        "text": { "type": "string" },
+        "updated": { "type": "number" }
+      },
+      "required": ["text", "updated"]
+    }
+  },
+  "firestore": {
+    "/users/{email}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profiles"
+    },
+    "/users/{email}/history/{messageId}": {
+      "schema": { "$ref": "#/entities/Message" },
+      "description": "User chat history"
+    },
+    "/users/{email}/tasks/{taskId}": {
+      "schema": { "$ref": "#/entities/Task" },
+      "description": "User tasks"
+    },
+    "/users/{email}/memory/{factId}": {
+      "schema": { "$ref": "#/entities/Fact" },
+      "description": "User memory facts"
+    },
+    "/system/rules": {
+      "schema": { "$ref": "#/entities/SystemRules" },
+      "description": "Global system rules"
+    }
+  }
+}

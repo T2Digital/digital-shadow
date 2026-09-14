@@ -1,0 +1,13 @@
+{
+  "name": "الظل الرقمي | Ez-Zel",
+  "description": "أقوى مساعد شخصي حصين بالذكاء الاصطناعي مع تشفير كامل للبيانات وذكاء مصري عبقري.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera",
+    "geolocation",
+    "display-capture"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

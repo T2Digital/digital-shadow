@@ -1,0 +1,23 @@
+
+{
+  "name": "الظل الرقمي | Ez-Zel Sovereign",
+  "short_name": "Ez-Zel",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020202",
+  "theme_color": "#a855f7",
+  "orientation": "portrait",
+  "categories": ["productivity", "business", "finance"],
+  "icons": [
+    {
+      "src": "https://i.ibb.co/fYp5VRYb/1000053833.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg"
+    },
+    {
+      "src": "https://i.ibb.co/fYp5VRYb/1000053833.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg"
+    }
+  ]
+}

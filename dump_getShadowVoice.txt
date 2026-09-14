@@ -1,0 +1,26 @@
+export const getShadowVoice = async (text: string, voice: string) => {
+    try {
+        const res = await getAI().models.generateContent({
+            model: "gemini-3.1-flash-tts-preview",
+            contents: [{ parts: [{ text }] }],
+            config: { 
+                responseModalities: [Modality.AUDIO], 
+                speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice === 'female' ? 'Kore' : 'Puck' } } } 
+            }
+        });
+        return res.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data || null;
+    } catch (e: any) { 
+        console.warn(`[Gemini TTS] Voice generation failed (likely quota). Falling back to native UI voice. Details: ${e?.message || e}`);
+        return null; 
+    }
+};
+
+function decode(b: string) { const s = atob(b); const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; }
+async function decodeAudioData(d: Uint8Array, c: AudioContext) { 
+    const byteLength = d.length % 2 === 0 ? d.length : d.length - 1;
+    const i16 = new Int16Array(d.buffer, 0, byteLength / 2); 
+    const b = c.createBuffer(1, i16.length, 24000); 
+    const cd = b.getChannelData(0); 
+    for (let i = 0; i < i16.length; i++) cd[i] = i16[i] / 32768.0; 
+    return b; 
+}

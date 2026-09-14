@@ -1,0 +1,62 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getUserEmail() {
+      return (request.auth != null && "email" in request.auth.token && request.auth.token.email != null) ? request.auth.token.email.lower() : "";
+    }
+    
+    function isOwner(email) {
+      return isAuthenticated() && getUserEmail() == email.lower();
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        getUserEmail() == "admin@shadow.com" || 
+        getUserEmail() == "ahmed.atya.daif@gmail.com" || 
+        (
+          getUserEmail() != "" && 
+          exists(/databases/$(database)/documents/users/$(getUserEmail())) && 
+          get(/databases/$(database)/documents/users/$(getUserEmail())).data.tier == 'sovereign'
+        )
+      );
+    }
+
+    match /users/{email} {
+      allow read, write: if isOwner(email) || isAdmin();
+      
+      match /{document=**} {
+        allow read, write: if isOwner(email) || isAdmin();
+      }
+    }
+
+    match /system/{document=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    match /system_pulse/{document=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    match /system_agents/{document=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    match /system_coupons/{document=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    match /feedback/{document=**} {
+      allow create: if isAuthenticated();
+      allow read, update, delete: if isAdmin();
+    }
+  }
+}

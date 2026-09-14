@@ -1,0 +1,12 @@
+export const startVideoGenerationNative = async (prompt: string, userKey?: string): Promise<any> => {
+    let key = userKey || (import.meta as any).env?.VITE_GEMINI_API_KEY;
+    if (!key) {
+        throw new Error("API Key is required for Veo 3 / Veo 2 generation.");
+    }
+    const ai = new GoogleGenAI({ apiKey: key, apiVersion: 'v1beta' });
+    const op = await ai.models.generateVideos({
+        model: "veo-2.0-generate-001",
+        prompt
+    });
+    return op;
+};

@@ -1,0 +1,35 @@
+export const analyzeMediaForArchive = async (base64Data: string, mimeType: string): Promise<{ title: string, summary: string, keywords: string[] }> => {
+    try {
+        const ai = getAI();
+        const b64Str = base64Data.split(',')[1] || base64Data;
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: [
+                {
+                    role: 'user',
+                    parts: [
+                        { text: "أنت مساعد ذكي متخصص في أرشفة الملفات. قم بتحليل هذه الصورة/الفيديو بدقة واستخرج اسم مختصر معبر (لا تضع الامتداد)، ووصف قصير جداً، و3 إلى 5 كلمات مفتاحية (keywords). اجعل ردك بصيغة JSON فقط كالتالي:\n{\n  \"title\": \"اسم الملف\",\n  \"summary\": \"ملخص للمحتوى\",\n  \"keywords\": [\"كلمة1\", \"كلمة2\"]\n}" },
+                        { inlineData: { data: b64Str, mimeType: mimeType } }
+                    ]
+                }
+            ],
+            config: {
+                responseMimeType: "application/json",
+            }
+        });
+        
+        const text = response.text;
+        if(text) {
+             return JSON.parse(text);
+        }
+    } catch(err) {
+        console.error("Failed to analyze media for archive:", err);
+    }
+    return { title: 'ميديا_مجهولة', summary: 'صورة/فيديو تم التقاطه من مساحة العمل', keywords: ['كاميرا', 'الظل'] };
+};
+
+import { getContextData, analyzeEmotionFromText } from './sensorService';
+
+import { localBrain } from './localBrainService';
+
+// --- MAIN RESPONSE FUNCTION ---

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
+    <!-- SEO & Metadata -->
+    <title>Ez-Zel | الظل الرقمي - المساعد الشخصي الأول بالذكاء الاصطناعي في مصر</title>
+    <meta name="description" content="تطبيق الظل الرقمي (Ez-Zel). أقوى مساعد شخصي مصري بالذكاء الاصطناعي. إدارة مهام، استشارات قانونية، تحليل نفسي، تحكم منزلي، وأرباح بالدولار. حمل التطبيق الآن وامتلك ظلك.">
+    <meta name="keywords" content="ذكاء اصطناعي, مصر, مساعد شخصي, تطبيق الظل, Ez-Zel, AI assistant Egypt, Gemini AI, ربح من النت, تسويق بالعمولة, إدارة أعمال, استشارات قانونية, تحكم منزلي, سمارت هوم, شات بوت مصري, تيتو, Tito HQ">
+    <meta name="author" content="TITO HQ">
+    <meta name="robots" content="index, follow">
+    <meta name="googlebot" content="index, follow">
+    
+    <!-- Open Graph / Facebook / WhatsApp -->
+    
+    <!-- LameJS (MP3 Encoder) - Loaded synchronously to bypass Vite bundler issues -->
+    <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
+
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://Ez-zel.vercel.app/">
+    <meta property="og:title" content="الظل الرقمي | عقلك التاني اللي مبينامش">
+    <meta property="og:description" content="مش مجرد تطبيق.. ده كيان كامل بيدير حياتك. جرب الظل الآن مجاناً.">
+    <meta property="og:image" content="https://i.ibb.co/fYp5VRYb/1000053833.jpg">
+    <meta property="og:locale" content="ar_EG">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://Ez-zel.vercel.app/">
+    <meta property="twitter:title" content="الظل الرقمي | Ez-Zel AI">
+    <meta property="twitter:description" content="أول مساعد شخصي بلهجة مصرية وقدرات عالمية.">
+    <meta property="twitter:image" content="https://i.ibb.co/fYp5VRYb/1000053833.jpg">
+    
+    <!-- PWA & Mobile -->
+    <link rel="manifest" href="./manifest.json">
+    <link rel="icon" type="image/jpeg" href="https://i.ibb.co/fYp5VRYb/1000053833.jpg">
+    <link rel="apple-touch-icon" href="https://i.ibb.co/fYp5VRYb/1000053833.jpg">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#020202">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        html { scroll-behavior: smooth; }
+        body { font-family: 'Cairo', sans-serif; background-color: #020202; color: #e5e5e5; overflow-x: hidden; user-select: none; -webkit-user-select: none; }
+        .glass { background: rgba(255, 255, 255, 0.02); backdrop-filter: blur(15px); border: 1px solid rgba(255, 255, 255, 0.05); }
+        ::-webkit-scrollbar { width: 0px; }
+        @media print { .print\:hidden { display: none !important; } .printable-invoice { padding: 40px !important; } }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js').catch(err => {
+              if (!err.message.includes('404')) console.log('SW register failed:', err);
+          });
+        });
+      }
+    </script>
+    <script type="module" src="/index.tsx"></script>
+</body>
+</html>

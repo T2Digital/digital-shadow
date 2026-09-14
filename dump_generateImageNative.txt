@@ -1,0 +1,26 @@
+export const generateImageNative = async (prompt: string, userKey?: string): Promise<string> => {
+    try {
+        let key = userKey || (import.meta as any).env?.VITE_GEMINI_API_KEY || (import.meta as any).env?.GEMINI_API_KEY;
+        const ai = new GoogleGenAI({ apiKey: key || 'dummy', apiVersion: 'v1beta' });
+        
+        try {
+            const r2 = await ai.models.generateImages({ model: "imagen-3.0-generate-002", prompt });
+            if (r2.generatedImages && r2.generatedImages.length > 0) {
+                const img = r2.generatedImages[0];
+                return `data:${img.image.mimeType};base64,${img.image.imageBytes}`;
+            }
+        } catch (e) {
+            console.log("Failed to generate with imagen-3.0-generate-002, trying fallback", e);
+            const r = await ai.models.generateImages({ model: "gemini-3.1-flash-image-preview", prompt });
+            if (r.generatedImages && r.generatedImages.length > 0) {
+                const img = r.generatedImages[0];
+                return `data:${img.image.mimeType};base64,${img.image.imageBytes}`;
+            }
+        }
+    } catch (finalError) {
+        console.error("Gemini image generation failed, falling back to pollinations:", finalError);
+    }
+    
+    // Final fallback
+    return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true&model=flux`;
+};

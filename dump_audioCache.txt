@@ -1,0 +1,22 @@
+export const audioCache = new Map<string, string>();
+
+// GLOBAL STATE FOR TTS
+// @ts-ignore
+window.shadowUtterance = null;
+let resumeInterval: any = null;
+
+export function resumeAudioContext() {
+    try {
+        if (!audioCtx) {
+            const CtxClass = (window.AudioContext || (window as any).webkitAudioContext);
+            if (CtxClass) audioCtx = new CtxClass({ sampleRate: 24000 });
+        }
+        if (audioCtx && (audioCtx.state === 'suspended' || (audioCtx.state as string) === 'interrupted')) {
+            audioCtx.resume().catch(() => {});
+        }
+        if ('speechSynthesis' in window && window.speechSynthesis.paused) {
+            window.speechSynthesis.resume();
+        }
+        return audioCtx;
+    } catch (e) { return null; }
+}

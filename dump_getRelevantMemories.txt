@@ -1,0 +1,39 @@
+export const getRelevantMemories = async (query: string, userId: string): Promise<string> => {
+    // Generate embedding for current query
+    const queryEmbedding = await generateEmbedding(query);
+    if (queryEmbedding.length === 0) {
+        // Fallback to local DB if embedding generation fails
+        const allMemories = await shadowDB.getMemory(userId);
+        return allMemories.slice(-5).map(m => m.fact).join(" | ");
+    }
+
+    // Try Pinecone First (Sci-Fi Level Vector DB)
+    // const pineconeResults = await queryPinecone(queryEmbedding, userId, 5);
+    // if (pineconeResults.length > 0) {
+    //     console.log("Vector DB (Pinecone) responded with:", pineconeResults.length, "facts");
+    //     return pineconeResults.join(" | ");
+    // }
+
+    // Fallback to IndexedDB local Cosine Similarity
+    const allMemories = await shadowDB.getMemory(userId);
+    if (allMemories.length === 0) return "";
+
+    const scoredMemories = [];
+    for (const mem of allMemories) {
+        let memEmbedding = mem.embedding;
+        // Lazy generation for old facts
+        if (!memEmbedding || memEmbedding.length === 0) {
+            memEmbedding = await generateEmbedding(mem.fact);
+            if (memEmbedding.length > 0) {
+                mem.embedding = memEmbedding;
+                await shadowDB.saveFact(mem);
+                console.log("[Vector DB] Backfilled missing embedding for fact locally.");
+            }
+        }
+        const score = cosineSimilarity(queryEmbedding, memEmbedding || []);
+        scoredMemories.push({ fact: mem.fact, score });
+    }
+
+    scoredMemories.sort((a, b) => b.score - a.score);
+    return scoredMemories.slice(0, 5).map(m => m.fact).join(" | ");
+};

@@ -1,0 +1,15 @@
+export const memorizeFact = async (userId: string, factText: string) => {
+    const memEmbedding = await generateEmbedding(factText);
+    const factObj = {
+        userId,
+        fact: factText,
+        timestamp: Date.now(),
+        embedding: memEmbedding.length > 0 ? memEmbedding : undefined 
+    };
+    const id = await shadowDB.saveFact(factObj);
+    
+    if (memEmbedding.length > 0) {
+        // True Local Vector Search: We only store locally, no more Pinecone syncing
+        console.log("[Vector DB] Fact embedded locally 100%");
+    }
+};

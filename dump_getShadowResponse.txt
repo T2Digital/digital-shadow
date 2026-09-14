@@ -1,0 +1,434 @@
+export const getShadowResponse = async (history: any[], message: string, extraData?: any, userProfile?: UserProfile, signal?: AbortSignal) => {
+    if (isRequesting) return { text: "ثواني بجمع أفكاري...", toolActions: [], groundingLinks: [], isError: false };
+    isRequesting = true;
+    
+    try {
+        // FAST path: only get rules, agents, and system keys
+        const [rules, agents, systemKeys] = await Promise.all([
+            shadowDB.getGlobalRules(), 
+            shadowDB.getAllAgents(),
+            shadowDB.getSystemKeys()
+        ]);
+        
+        // Execute memory retrieval separately to not block if FS is slow
+        let relevantMemories: string = "";
+        let brandVaultsItems: any[] = [];
+        let pendingTasks: any[] = [];
+        
+        try {
+            const memPromise = getRelevantMemories(message, userProfile?.email || 'GUEST');
+            const tasksPromise = shadowDB.getTasks(userProfile?.email || 'GUEST');
+            const fsPromise = shadowDB.init().then(dbLocal => {
+                // Get FS items incredibly fast from IDB directly without firebase fallback for chat context
+                return new Promise<any[]>((resolve) => {
+                    const req = dbLocal.transaction('fs', 'readonly').objectStore('fs').getAll();
+                    req.onsuccess = () => resolve((req.result as any[]).filter(i => i.type === 'brand' && i.userId === (userProfile?.email?.toLowerCase() || 'guest')));
+                    req.onerror = () => resolve([]);
+                });
+            });
+
+            const [mem, tsk, fs] = await Promise.all([memPromise, tasksPromise, fsPromise]);
+            relevantMemories = mem;
+            pendingTasks = tsk;
+            brandVaultsItems = fs;
+        } catch(e) {
+            console.warn("Non-critical DB fetch failed during prompt preparation", e);
+        }
+
+        const systemInstruction = generateSystemPrompt(userProfile, relevantMemories, rules, agents);
+        
+        const brandVaults = brandVaultsItems.map(item => `- Brand: ${item.name}\n  Details: ${item.content || item.l0_summary}`).join('\n\n');
+
+        const lowerMsg = message.toLowerCase();
+        // Updated search intent to exclude coding terms
+        const searchKeywords = ['بحث', 'سعر', 'اخبار', 'أخبار', 'طقس', 'مين هو', 'من هو', 'تاريخ', 'متى', 'كام', 'بكام', 'search', 'price', 'news', 'weather', 'who is'];
+        const isSearchIntent = searchKeywords.some(kw => lowerMsg.includes(kw));
+
+        // --- OFFLINE EDGE AI INTERCEPTOR ---
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+            const needsQueue = lowerMsg.includes('انشر') || lowerMsg.includes('ابعت') || lowerMsg.includes('تداول');
+            if (needsQueue) {
+                await shadowDB.saveTask({
+                    userId: userProfile?.email || 'GUEST',
+                    task: `(Offline Queue): ${message}`,
+                    category: 'offline',
+                    status: 'pending',
+                    time: 'عند عودة الاتصال'
+                });
+            }
+
+            if (localBrain.isReady()) {
+                const context = `مهام مجدولة: ${pendingTasks.length}\n` +
+                                `علامات تجارية: ${brandVaultsItems.length}`;
+                
+                let visionText = "";
+                try {
+                    const { localTransformers } = await import('./localTransformersService');
+                    if (extraData?.imageBase64) {
+                        visionText = await localTransformers.analyzeImage(extraData.imageBase64);
+                    }
+                } catch(e) {}
+                
+                const finalMessage = visionText ? message + "\n[تم رفع صورة. تحليل الرؤية المحلي لـ Edge Vision وجد: " + visionText + "]" : message;
+                const text = await localBrain.generateResponse(finalMessage, context);
+                
+                let queuedMsg = needsQueue ? '\n\n(تم إضافة الطلب لقائمة الانتظار لحين عودة الإنترنت لتنفيذه فعلياً).' : '';
+                return {
+                    text: `(Edge AI⚡) ${text}${queuedMsg}`,
+                    toolActions: [],
+                    groundingLinks: [],
+                    isError: false
+                };
+            } else {
+                if (!needsQueue) {
+                    await shadowDB.saveTask({
+                        userId: userProfile?.email || 'GUEST',
+                        task: `(Offline Response): ${message}`,
+                        category: 'offline',
+                        status: 'pending',
+                        time: 'عند عودة الاتصال'
+                    });
+                }
+                
+                let visionText = "";
+                try {
+                    const { localTransformers } = await import('./localTransformersService');
+                    if (extraData?.imageBase64) {
+                        visionText = await localTransformers.analyzeImage(extraData.imageBase64);
+                    }
+                } catch(e) {}
+
+                const fallbackReply = visionText 
+                    ? `(رؤية محلية⚡) نجحت في تحليل الصورة محلياً ووجدت: ${visionText}\n\n(باقي المهام بحاجة للإنترنت أو تحميل محرك Edge AI للعمل)` 
+                    : `أنا حالياً أعمل بوضع عدم الاتصال.\n\nرسالتك أضيفت لصف الانتظار: "${message}".\n\nبمجرد عودة الإنترنت، أو تفعيل محرك الذكاء الاصطناعي المحلي (Edge AI) سيتم معالجتها.`;
+
+                return {
+                    text: fallbackReply,
+                    toolActions: [],
+                    groundingLinks: [],
+                    isError: false
+                };
+            }
+        }
+
+        const now = new Date();
+        const timeStamp = now.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        
+        const scheduledTasksText = pendingTasks.filter((t: any) => t.status === 'pending').map((t: any) => `- ${t.task} (النوع: ${t.category || t.type})`).join('\n') || '- لا توجد مهام مجدولة حالياً.';
+
+        const contextData = await getContextData();
+        const emotionData = analyzeEmotionFromText(message);
+
+        const identityInjection = `
+        \n\n[SYSTEM_HIDDEN_CONTEXT]:
+        - CURRENT_TIME: ${timeStamp}
+        - PENDING_TASKS & SCHEDULES: 
+        ${scheduledTasksText}
+        (NOTE: Tasks of category "autonomous" or "swarm" are CURRENTLY RUNNING IN THE BACKGROUND on your Backend Worker (Redis/BullMQ). When asked, confirm they are ACTUALLY running as real processes, not simulations, and you will notify the user when the server finishes.)
+        (إذا كان هناك رسائل خلفية (Shadow Messages) في السياق، اعرض التعاون. للتواصل بين الظلال يتم استخدام البريد الإلكتروني أو ID المستخدم، وسيقوم الظل الآخر باستقبالها خلف الكواليس.)
+        
+        [BRAND_VAULTS_AUTO_CONTEXT]:
+        If the user asks for a design, video script, or social media post for any of these brands, YOU MUST automatically use the Tone of Voice, Visual Guidelines (Hex Colors), and Strategy provided below:
+        ${brandVaults || 'No Brand Vaults available. If the user asks for a specific brand, configure it first via brand_vault_manager tool.'}
+        
+        - BATTERY_STATUS: ${contextData.battery}
+        - NETWORK_STATUS: ${contextData.network}
+        - DEVICE_INFO: ${contextData.userAgent}
+        - DETECTED_USER_EMOTION: ${emotionData.emotion}
+        - URGENCY_LEVEL: ${emotionData.urgency}
+        - YOUR_IDENTITY: Ez-Zel (الظل). Egyptian AI Assistant. You must act accordingly to the user's emotion and urgency.
+        - VOICE_ANALYSIS_INSTRUCTION: If the user attached an audio message (.webm), deeply analyze their actual voice tone, emotion (stress, happiness, anger), and background noise, and respond appropriately showing that you feel their exact emotion!
+        - USER_NAME: ${userProfile?.name || 'Master'}.
+        - INSTRUCTION: Reply in Egyptian Arabic.
+        `;
+        
+        const finalUserMessage = message + identityInjection;
+
+        const userParts: any[] = [{ text: finalUserMessage }];
+        if (extraData?.data) userParts.push({ inlineData: { data: extraData.data, mimeType: extraData.mimeType } });
+
+        const cleanHistory = history.reduce((acc: any[], h: any) => {
+            if (!h.parts || h.parts.length === 0) return acc;
+            const validParts = h.parts.filter((p: any) => (typeof p.text === 'string' && p.text.trim().length > 0) || p.functionCall || p.functionResponse || p.inlineData);
+            if (validParts.length > 0) acc.push({ role: h.role === 'user' ? 'user' : 'model', parts: validParts });
+            return acc;
+        }, []);
+
+        let tools: any[] = [];
+        // Extract active persona if defined in userProfile or deduce it (for now we use undefined, to be injected by UI)
+        const activePersona = extraData?.activePersona || undefined;
+        const resolvedTools = await getAvailableTools(userProfile, activePersona);
+        tools.push({ functionDeclarations: resolvedTools });
+        // Always give him the ability to search google if he wants, but give priority to action tools
+        tools.push({ googleSearch: {} });
+
+        let response: GenerateContentResponse | null = null;
+        let lastError: any = null;
+        let allErrors: string[] = [];
+        
+        let customOpenAIResponse: string | null = null;
+
+        if (systemKeys?.openAIBaseUrl && systemKeys?.openAIApiKey && systemKeys?.openAIModelName) {
+            try {
+                const openAIAcc = [...cleanHistory.slice(-6).map(m => ({ 
+                    role: m.role === 'model' ? 'assistant' : 'user', 
+                    content: m.parts[0].text 
+                })), { role: 'user', content: finalUserMessage }];
+                
+                const nvidiaReq = await fetch(`${systemKeys.openAIBaseUrl.replace(/\/$/, '')}/chat/completions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${systemKeys.openAIApiKey}` },
+                    body: JSON.stringify({
+                        model: systemKeys.openAIModelName,
+                        messages: [{ role: 'system', content: systemInstruction }, ...openAIAcc],
+                        max_tokens: 2000,
+                        temperature: 0.7
+                    })
+                });
+                
+                if (nvidiaReq.ok) {
+                    const data = await nvidiaReq.json();
+                    customOpenAIResponse = data.choices?.[0]?.message?.content || "";
+                } else {
+                    console.error("OpenClaw/Nvidia Router Error:", await nvidiaReq.text());
+                }
+            } catch(e) {
+                console.error("OpenClaw execution failed:", e);
+            }
+        }
+
+        if (customOpenAIResponse) {
+            return {
+                text: customOpenAIResponse,
+                toolActions: [],
+                groundingLinks: [],
+                isError: false
+            };
+        }
+
+        for (const model of MODEL_CHAIN) {
+            try {
+                if (lastError) {
+                    const isQuota = lastError.message?.includes('429') || lastError.status === 429;
+                    await sleep(isQuota ? 2000 : 500); 
+                }
+                
+                const generatePromise = getAI().models.generateContent({
+                    model: model,
+                    contents: [...cleanHistory.slice(-6), { role: 'user', parts: userParts }],
+                    config: {
+                        systemInstruction: { parts: [{ text: systemInstruction }] },
+                        tools: tools,
+                        toolConfig: { includeServerSideToolInvocations: true },
+                        temperature: 0.7
+                    }
+                });
+
+                // 60 seconds timeout
+                const timeoutPromise = new Promise<never>((_, reject) => {
+                    setTimeout(() => reject(new Error('Request Timeout')), 60000);
+                });
+
+                response = await Promise.race([generatePromise, timeoutPromise]) as GenerateContentResponse;
+
+                if (response) break; 
+            } catch (e: any) {
+                lastError = e;
+                allErrors.push(`${model}: ${e.message || 'Error'}`);
+            }
+        }
+
+        if (!response) {
+            console.error("All models failed. Last error:", lastError);
+            return { 
+                text: `معلش يا ريس، السيرفرات عليها ضغط شديد جداً دلوقتي. ممكن تديني دقيقة راحة ونجرب تاني؟ (${allErrors.join(' | ')})`, 
+                toolActions: [],
+                groundingLinks: [],
+                isError: true 
+            };
+        }
+
+        let toolActions = [];
+        try {
+            toolActions = JSON.parse(JSON.stringify(response.functionCalls || []));
+        } catch (e) {
+            toolActions = response.functionCalls || [];
+        }
+        
+        let finalText = response.text || "";
+        if (!finalText && response.candidates?.[0]?.content?.parts) {
+            finalText = response.candidates[0].content.parts.filter((p: any) => p.text).map((p: any) => p.text).join("\n");
+        }
+
+        const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+        const groundingLinks = groundingChunks.map((c: any) => ({ title: c.web?.title || "مصدر", uri: c.web?.uri })).filter((l: any) => l.uri) || [];
+
+        // Check if memory archivist was called
+        const archivistCall = toolActions.find((t: any) => t.name === 'memory_archivist');
+        if (archivistCall && archivistCall.args?.fact) {
+            if (finalText) {
+                finalText += `\n\n*(سجلت المعلومة دي في دماغي: ${archivistCall.args.fact})*`;
+            } else {
+                 finalText = `فهمتك يا ريس، وسجلت المعلومة دي في دماغي عشان منسهاش: ${archivistCall.args.fact}`;
+            }
+        }
+
+        if (!finalText && toolActions.length > 0) {
+            // Check if it's the IT Developer tool
+            if (toolActions.some((t: any) => t.name === 'system_terminal')) {
+                const termAction = toolActions.find((t: any) => t.name === 'system_terminal');
+                const cmdSummary = termAction?.args?.command ? termAction.args.command.substring(0, 20) : "الأوامر دي";
+                finalText = `سيبلي أنا الطلعة دي يا ريس، بأتمتلك الأكواد (${cmdSummary}) ورا الكواليس أهو...`;
+            } else if (toolActions.some((t: any) => t.name === 'auto_deployer')) {
+                finalText = "بجهزلك الأكواد عشان ارفعها على جيت هاب وانشرها دلوقتي، دقايق واللينك يكون معاك يا هندسة!";
+            } else if (toolActions.some((t: any) => t.name === 'crypto_trader')) {
+                const tradeAction = toolActions.find((t: any) => t.name === 'crypto_trader');
+                const symbol = tradeAction?.args?.symbol || 'العملات';
+                finalText = `بحلل ${symbol} وبظبط الماركت من بينانس، اصبر عليا ثواني يا ماستر..`;
+            } else if (toolActions.some((t: any) => t.name === 'social_poster')) {
+                const socialAction = toolActions.find((t: any) => t.name === 'social_poster');
+                const platform = socialAction?.args?.platform || 'السوشيال ميديا';
+                finalText = `بجهزلك البوست وبنزله على ${platform} حالا، متقلقش من حاجة.`;
+            } else if (toolActions.some((t: any) => t.name === 'link_reader')) {
+                const linkAction = toolActions.find((t: any) => t.name === 'link_reader');
+                const urlSummary = linkAction?.args?.url ? new URL(linkAction.args.url).hostname : 'الموقع ده';
+                finalText = `عيني يا هندسة، بدخل أشفطلك المحتوى من ${urlSummary} وألخصهولك دلوقتي...`;
+            } else if (toolActions.some((t: any) => t.name === 'click_on_screen')) {
+                const clickAction = toolActions.find((t: any) => t.name === 'click_on_screen');
+                const textTarget = clickAction?.args?.text_to_click || 'الزرار';
+                finalText = `بضغطلك على (${textTarget}) اهنجزلك الحوار..`;
+            } else if (toolActions.some((t: any) => t.name === 'app_control')) {
+                const appAction = toolActions.find((t: any) => t.name === 'app_control');
+                const appName = appAction?.args?.app_name || appAction?.args?.path || appAction?.args?.file_path || appAction?.args?.action || 'الملف/التطبيق';
+                finalText = `أوامرك يا الماستر، بفتحلك (${appName}) فوراً..`;
+            } else if (toolActions.some((t: any) => t.name === 'schedule_spontaneous_message')) {
+                const sponAction = toolActions.find((t: any) => t.name === 'schedule_spontaneous_message');
+                const delay = sponAction?.args?.delay_seconds || 10;
+                finalText = `قشطة يا ريس، اعتبرني هطب عليك بمسج وشوية إزعاج لذيذ بعد ${delay} ثانية!`;
+            } else if (toolActions.some((t: any) => t.name === 'schedule_reminder')) {
+                const scheduleAction = toolActions.find((t: any) => t.name === 'schedule_reminder');
+                const taskName = scheduleAction?.args?.task || 'الميعاد';
+                finalText = `عينيا يا غالي، سجلتلك (${taskName}) عشان مفوتكش حاجة مهمة.`;
+            } else if (toolActions.some((t: any) => t.name === 'run_autonomous_agent')) {
+                const agentAction = toolActions.find((t: any) => t.name === 'run_autonomous_agent');
+                const promptSummary = agentAction?.args?.prompt_for_agent ? agentAction.args.prompt_for_agent.substring(0, 30) + "..." : "المهمة دي";
+                finalText = `سيبلي ${promptSummary} شغالة في الخلفية يا ريس، هتابعها وهبلغك النتيجة.`;
+            } else if (toolActions.some((t: any) => t.name === 'design_generator')) {
+                const designAction = toolActions.find((t: any) => t.name === 'design_generator');
+                const promptSummary = designAction?.args?.prompt ? designAction.args.prompt.substring(0, 30) + "..." : "التصميم ده";
+                finalText = `من عنيا يا ريس، بجهزلك ${promptSummary} بنموذج (Nano Banana Pro) حالا.`;
+            } else if (toolActions.some((t: any) => t.name === 'video_generator')) {
+                const videoAction = toolActions.find((t: any) => t.name === 'video_generator');
+                const promptSummary = videoAction?.args?.prompt ? videoAction.args.prompt.substring(0, 30) + "..." : "الفيديو ده";
+                finalText = `بشغلك محرك Veo 3.1 على ${promptSummary}، ثواني ويكون معاك.`;
+            } else if (toolActions.some((t: any) => t.name === 'workspace_manager')) {
+                const wsAction = toolActions.find((t: any) => t.name === 'workspace_manager');
+                const actionType = wsAction?.args?.action || 'تحديث';
+                const pathStr = wsAction?.args?.path || 'مساحة العمل';
+                let actionVerb = 'بظبط';
+                if (actionType === 'create_folder' || actionType === 'create_file') actionVerb = 'بنشئ';
+                if (actionType === 'read_l0_index' || actionType === 'read_l2_content') actionVerb = 'بقرأ';
+                if (actionType === 'list_workspace') actionVerb = 'بستعرض';
+                if (actionType === 'delete_file') actionVerb = 'بحذف';
+                if (actionType === 'move_file') actionVerb = 'بنقل وبرتب';
+                if (actionType === 'rename_item') actionVerb = 'بغير اسم';
+                finalText = `حاضر يا ريس، أنا ${actionVerb} (${pathStr.substring(0, 30)}) دلوقتي عشان أظبطلك الدنيا.`;
+            } else if (toolActions.some((t: any) => t.name === 'project_manager')) {
+                finalText = "أوامرك يا ريس، بظبطلك خطة المشروع وبديره بالكامــل، بص كدة على الواجهة دي..";
+            } else if (toolActions.some((t: any) => t.name === 'live_trader_chart')) {
+                const chartAction = toolActions.find((t: any) => t.name === 'live_trader_chart');
+                const sym = chartAction?.args?.symbol || 'العملة';
+                finalText = `جاري استدعاء شارت السوق المباشر لـ ${sym} وتحليله زي ما طلبت يا ماستر...`;
+            } else if (toolActions.some((t: any) => t.name === 'advanced_vision_extraction')) {
+                finalText = "بحلل الصورة وبستخرج أدق البيانات المطلوبة منها يا هندسة، ثواني والأسبريسو يكون جاهز...";
+            } else if (toolActions.some((t: any) => t.name === 'brand_vault_manager')) {
+                const vaultAction = toolActions.find((t: any) => t.name === 'brand_vault_manager');
+                const pName = vaultAction?.args?.profile_name || 'البراند';
+                finalText = `علم يا ريس! بجهز خزنة البراند (Brand Vault) لـ "${pName}" وهظبط الهوية والاستراتيجية بتاعته...`;
+            } else if (toolActions.some((t: any) => t.name === 'generate_video')) {
+                finalText = "بس كدة؟ بجهزلك سكريبت وصورة ومولدين الفيديو دلوقتي، جهز الفشار يا ريس...";
+            } else if (toolActions.some((t: any) => t.name === 'social_messaging_bridge')) {
+                finalText = "جاري تفعيل جسر التواصل وإرسال الرسالة فوراً عبر المنصة المطلوبة.";
+            } else if (toolActions.some((t: any) => t.name === 'agent_dashboard_monitor')) {
+                finalText = "بفتحلك لوحة تحكم عمال الخلفية عشان تراقب المهام الحية يا ريس.";
+            } else if (toolActions.some((t: any) => t.name === 'digital_twin_automation')) {
+                finalText = "المستنسخ جاهز يا ماستر، هرد عليه بلسانك وبالستايل بتاعك دلوقتي حالا من غير ما تتعب نفسك!";
+            } else if (toolActions.some((t: any) => t.name === 'marketer_shadow')) {
+                finalText = "الظل المسوق اشتغل يا ماستر.. بجمع داتا المنافسين وهحطلك خطة تكتسح السوق كله.";
+            } else if (toolActions.some((t: any) => t.name === 'economic_swarm_mode')) {
+                finalText = "تم إطلاق سرب التداول والمضاربة يا ماستر.. شغالين معاك بصفقات بيع وشراء حقيقية على بينانس 24 ساعة، أي ربح هيجي لك إشعار بيه حالا.";
+            } else if (toolActions.some((t: any) => t.name === 'iot_ghost_protocol')) {
+                finalText = "بروتوكول الشبح مفعل.. أنا دلوقتي بستكشف شبكات الـ IoT حواليك وبخترق الأجهزة المستهدفة بصمت كامل..";
+            } else if (toolActions.some((t: any) => t.name === 'play_quran')) {
+                const qAction = toolActions.find((t: any) => t.name === 'play_quran');
+                const sName = qAction?.args?.surah_name || 'المطلوبة';
+                const reciterMap: Record<string, string> = {
+                    'mishary': 'مشاري العفاسي',
+                    'abdulbasit': 'عبدالباسط عبدالصمد',
+                    'maher': 'ماهر المعيقلي',
+                    'sudais': 'عبدالرحمن السديس',
+                    'shuraim': 'سعود الشريم',
+                    'husary': 'محمود خليل الحصري',
+                    'mustafa': 'مصطفى إسماعيل',
+                    'minshawi': 'محمد صديق المنشاوي',
+                    'jalil': 'خالد الجليل',
+                    'fares': 'فارس عباد'
+                };
+                const rName = reciterMap[qAction?.args?.reciter] || 'القارئ';
+                finalText = `حاضر هشغلك حالا سورة "${sName}" بصوت الشيخ "${rName}"`;
+            } else {
+                const genericAction = toolActions[0];
+                finalText = `جاري تنفيذ العملية المطلوبة (${genericAction.name}).. ثواني يا ريس`;
+            }
+        } else if (!finalText && groundingLinks.length > 0) {
+            finalText = `دورت وجبتلك الخلاصة من النت بخصوص ("${message.substring(0, 30)}...")، بص كده على المصادر دي عشان تتأكد بنفسك يا هندسة.`;
+        }
+
+        // Clean up any Markdown links generated in the text (Gemini sometimes leaks them despite instructions)
+        if (finalText) {
+            // Remove markdown links like [Text](http...) or [1](http...)
+            finalText = finalText.replace(/\[([^\]]+)\]\((https?:\/\/[^\s]+)\)/g, '').trim();
+            // Remove reference blocks like [1]: https://...
+            finalText = finalText.replace(/\[\d+\]:\s*https?:\/\/[^\s]+/g, '').trim();
+            // Remove lingering [1], [2] at the end of sentences
+            finalText = finalText.replace(/\[\d+\]/g, '').trim();
+        }
+
+        // --- ENFORCE EGYPTIAN PERSONA ---
+        if (finalText) {
+            const gulfWords = ['ايش', 'شلون', 'هلا', 'طال عمرك', 'ابشر', 'أبشر', 'وش', 'واجد'];
+            const egyptianReplacements = ['إيه', 'إزاي', 'أهلاً', 'يا ريس', 'من عنيا', 'من عنيا', 'إيه', 'كتير'];
+            gulfWords.forEach((word, idx) => {
+                 finalText = finalText.replace(new RegExp(`\\b${word}\\b`, 'g'), egyptianReplacements[idx]);
+            });
+        }
+
+        return { 
+            text: finalText || "معلش يا ريس، الشبكة قطعت فجأة. قول تاني؟", 
+            toolActions, 
+            groundingLinks, 
+            isError: false 
+        };
+
+    } catch (e: any) {
+        console.error("Gemini API Error:", e);
+        
+        // Edge Fallback when network is down or API fails
+        const fallback = processOfflineCommand(message);
+        if (fallback) {
+            return {
+                text: fallback.text,
+                toolActions: fallback.toolActions,
+                groundingLinks: [],
+                isError: false
+            };
+        }
+
+        return { 
+            text: `الشبكة عندي فيها مشكلة عامة دلوقتي يا ريس. ممكن تجرب بعد دقيقة؟ (${e.message || "Unknown error"})`, 
+            toolActions: [],
+            groundingLinks: [],
+            isError: true 
+        };
+    } finally { isRequesting = false; }
+};
