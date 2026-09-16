@@ -105,8 +105,8 @@ export const NotificationManager: React.FC = () => {
       }
     };
 
-    // POLLING WHEN FOREGROUNDED
-    const intervalId = setInterval(performChecks, 2000);
+    // POLLING WHEN FOREGROUNDED (Optimized to 10s to prevent battery and database thrashing)
+    const intervalId = setInterval(performChecks, 10000);
 
     let appStateListener: any;
     const setupListener = async () => {

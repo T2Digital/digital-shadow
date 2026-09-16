@@ -336,6 +336,9 @@ class ShadowDB {
   }
 
   async init(): Promise<IDBDatabase> {
+    if (typeof indexedDB === 'undefined') {
+      return Promise.reject(new Error("IndexedDB is not defined in this environment (Node.js/Worker)"));
+    }
     return new Promise((resolve, reject) => {
       const request = indexedDB.open(this.dbName, this.version);
       request.onerror = (event) => reject((event.target as any).error);
@@ -402,10 +405,12 @@ class ShadowDB {
 
   async nukeLocalDatabase() {
       try {
-          localStorage.clear();
-          sessionStorage.clear();
-          const req = indexedDB.deleteDatabase(this.dbName);
-          req.onsuccess = () => console.log("IndexedDB wiped");
+          if (typeof localStorage !== 'undefined') localStorage.clear();
+          if (typeof sessionStorage !== 'undefined') sessionStorage.clear();
+          if (typeof indexedDB !== 'undefined') {
+              const req = indexedDB.deleteDatabase(this.dbName);
+              req.onsuccess = () => console.log("IndexedDB wiped");
+          }
           if (auth) await auth.signOut();
           return true;
       } catch (e) {
@@ -878,6 +883,9 @@ class ShadowDB {
   }
 
   async getTasks(userId: string): Promise<DBTask[]> {
+    if (typeof indexedDB === 'undefined') {
+        return [];
+    }
     const db = await this.init();
     const tx = db.transaction('tasks', 'readonly');
     const request = tx.objectStore('tasks').index('userId').getAll(userId);
@@ -1034,14 +1042,22 @@ class ShadowDB {
 
   async getProfile(email: string): Promise<UserProfile | undefined> {
       const cleanEmail = email.toLowerCase();
-      const dbLocal = await this.init();
-      const tx = dbLocal.transaction('profiles', 'readonly');
-      const request = tx.objectStore('profiles').get(cleanEmail);
-      
-      let localProfile = await new Promise<UserProfile | undefined>((resolve) => {
-          request.onsuccess = () => resolve(request.result);
-          request.onerror = () => resolve(undefined);
-      });
+      let localProfile: UserProfile | undefined = undefined;
+
+      if (typeof indexedDB !== 'undefined') {
+          try {
+              const dbLocal = await this.init();
+              const tx = dbLocal.transaction('profiles', 'readonly');
+              const request = tx.objectStore('profiles').get(cleanEmail);
+              
+              localProfile = await new Promise<UserProfile | undefined>((resolve) => {
+                  request.onsuccess = () => resolve(request.result);
+                  request.onerror = () => resolve(undefined);
+              });
+          } catch (e) {
+              console.warn("[DB] Local IndexedDB lookup bypassed/failed:", e);
+          }
+      }
 
       if (!localProfile && db && cleanEmail !== 'guest') {
          try {
@@ -1049,7 +1065,9 @@ class ShadowDB {
              if (docSnap.exists()) {
                  const cloudData = docSnap.data() as UserProfile;
                  localProfile = { ...cloudData, email: cleanEmail };
-                 await this.saveProfile(localProfile, true); 
+                 if (typeof indexedDB !== 'undefined') {
+                     await this.saveProfile(localProfile, true).catch(() => {}); 
+                 }
              }
          } catch(e) { console.warn("[DB] Cloud fetch failed/skipped:", e); }
       }
@@ -1062,7 +1080,9 @@ class ShadowDB {
               referralsCount: 0,
               payoutHistory: []
           };
-          await this.saveProfile(localProfile, true);
+          if (typeof indexedDB !== 'undefined') {
+              await this.saveProfile(localProfile, true).catch(() => {});
+          }
       }
 
       if (localProfile && localProfile.personalKeys) {
@@ -1097,18 +1117,34 @@ class ShadowDB {
           };
       }
 
-      const dbLocal = await this.init();
-      const tx = dbLocal.transaction('profiles', 'readwrite');
-      const request = tx.objectStore('profiles').put(secureProfile);
       if (!skipCloud && profile.email !== 'GUEST') this.pushToCloud('profiles', secureProfile);
-      return new Promise((resolve, reject) => { request.onsuccess = () => resolve(true); request.onerror = () => reject(request.error); });
+
+      if (typeof indexedDB === 'undefined') {
+          return true;
+      }
+
+      try {
+          const dbLocal = await this.init();
+          const tx = dbLocal.transaction('profiles', 'readwrite');
+          const request = tx.objectStore('profiles').put(secureProfile);
+          return new Promise((resolve, reject) => { request.onsuccess = () => resolve(true); request.onerror = () => reject(request.error); });
+      } catch (e) {
+          console.warn("[DB] Failed saving profile to local indexedDB:", e);
+          return true;
+      }
   }
 
   async getAllProfiles(forceSync: boolean = false): Promise<UserProfile[]> {
-      const dbLocal = await this.init();
-      const request = dbLocal.transaction('profiles', 'readonly').objectStore('profiles').getAll();
-      
-      const localProfiles = await new Promise<UserProfile[]>((resolve) => { request.onsuccess = () => resolve(request.result || []); request.onerror = () => resolve([]); });
+      let localProfiles: UserProfile[] = [];
+      if (typeof indexedDB !== 'undefined') {
+          try {
+              const dbLocal = await this.init();
+              const request = dbLocal.transaction('profiles', 'readonly').objectStore('profiles').getAll();
+              localProfiles = await new Promise<UserProfile[]>((resolve) => { request.onsuccess = () => resolve(request.result || []); request.onerror = () => resolve([]); });
+          } catch(e) {
+              console.warn("[DB] Local getAllProfiles bypassed:", e);
+          }
+      }
 
       // Only fetch all from Firestore if forced, or if local cache is completely empty and we are online.
       // This prevents massive Quota issues from components repeatedly doing full table scans.
@@ -1119,7 +1155,9 @@ class ShadowDB {
               snap.forEach((doc) => {
                   const p = { ...doc.data(), email: doc.id } as UserProfile;
                   cloudProfiles.push(p);
-                  this.saveProfile(p, false); // cache it
+                  if (typeof indexedDB !== 'undefined') {
+                      this.saveProfile(p, false).catch(() => {}); // cache it
+                  }
               });
               return cloudProfiles;
           } catch(e) {

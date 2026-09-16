@@ -67,7 +67,7 @@ const LiveTickers: React.FC = () => {
         };
 
         loadStats();
-        const interval = setInterval(loadStats, 30000); 
+        const interval = setInterval(loadStats, 60000); 
 
         // Listen to pulses
         const checkPulse = async () => {
@@ -87,7 +87,7 @@ const LiveTickers: React.FC = () => {
             }
         };
         checkPulse();
-        const pulseInterval = setInterval(checkPulse, 10000);
+        const pulseInterval = setInterval(checkPulse, 30000);
 
         return () => {
             clearInterval(interval);

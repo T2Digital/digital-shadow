@@ -348,18 +348,38 @@ export async function processAgentTask(job: Job) {
         }
         
         try {
-            const response = await taskAi.models.generateContent({
-                model: 'gemini-3.1-pro-preview',
-                contents: history as any,
-                config: {
-                    tools: [{ functionDeclarations: tools as any }],
-                    systemInstruction: { parts: [{ text: `أنت الظل (Ez-Zel Digital Shadow)، تمتلك قدرات استثنائية. 
-                    شخصيتك الحالية المكلفة بتنفيذ العمل: ${persona || 'خبير ومساعد ذكي'}. تصرف بناء على هذه الشخصية.
-                    لديك قدرة للوصول لنظامك وتعديله بأداة adk_read_source_code، وللإنترنت وبرمجة النظام. استخدم Sandbox كسجل للاختبار.
-                    قم بالتفكير كخطوات ثم استدع adk_finish بالنهاية سريعا بمجرد إنهاء المهمة ولا تكرر الكلام.` }] },
-                    temperature: 0.6
+            const CANDIDATE_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.5-pro'];
+            let response: any = null;
+            let lastErr: any = null;
+
+            for (const modelName of CANDIDATE_MODELS) {
+                try {
+                    response = await taskAi.models.generateContent({
+                        model: modelName,
+                        contents: history as any,
+                        config: {
+                            tools: [{ functionDeclarations: tools as any }],
+                            systemInstruction: { parts: [{ text: `أنت الظل (Ez-Zel Digital Shadow)، تمتلك قدرات استثنائية. 
+                            شخصيتك الحالية المكلفة بتنفيذ العمل: ${persona || 'خبير ومساعد ذكي'}. تصرف بناء على هذه الشخصية.
+                            لديك قدرة للوصول لنظامك وتعديله بأداة adk_read_source_code، وللإنترنت وبرمجة النظام. استخدم Sandbox كسجل للاختبار.
+                            قم بالتفكير كخطوات ثم استدع adk_finish بالنهاية سريعا بمجرد إنهاء المهمة ولا تكرر الكلام.` }] },
+                            temperature: 0.6
+                        }
+                    });
+                    if (response) break;
+                } catch (mErr: any) {
+                    lastErr = mErr;
+                    console.warn(`[WORKER] Model ${modelName} failed: ${mErr.message}. Attempting fallback...`);
+                    // If rate-limited (429), backoff briefly before trying next model
+                    if (mErr.status === 429 || mErr.message?.includes('429') || mErr.message?.includes('quota')) {
+                        await new Promise(r => setTimeout(r, 1500));
+                    }
                 }
-            });
+            }
+
+            if (!response) {
+                throw lastErr || new Error("All candidate models failed to generate content.");
+            }
 
             const call = response.functionCalls?.[0];
             const textResponse = response.text || "";
