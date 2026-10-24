@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Cpu, X, Download, ShieldCheck, WifiOff, Terminal, Play, Loader2, Image as ImageIcon, Mic, MessageSquare, Video, Database, Monitor, FileCode, Network } from 'lucide-react';
 import { localTransformers } from '../services/localTransformersService';
+import { localBrain } from '../services/localBrainService';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile } from '@ffmpeg/util';
 
@@ -91,24 +92,28 @@ export const LocalDeepDive: React.FC<{ onClose: () => void }> = ({ onClose }) =>
 
     const handleSimulateInference = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!input.trim() || !modelStates.sentiment) return;
+        if (!input.trim()) return;
         
         const q = input;
         setInput('');
         addLog(`User: ${q}`);
-        addLog('Analyzing Sentiment locally (Offline)...');
+        addLog('Running Real Local AI Inference (Google Gemma / On-Device Engine)...');
         
         try {
-            const sentimentResult = await localTransformers.analyzeEmotions(q);
-            addLog(`Shadow (Local Sentiment): ${sentimentResult}`);
+            const brainResponse = await localBrain.generateResponse(q);
+            addLog(`Shadow (Local Brain): ${brainResponse}`);
+
+            if (modelStates.sentiment) {
+                const sentimentResult = await localTransformers.analyzeEmotions(q);
+                addLog(`Shadow (Local Sentiment): ${sentimentResult}`);
+            }
 
             if (modelStates.translation) {
-                addLog('Translating to English locally...');
                 const en = await localTransformers.translate(q, 'eng_Latn');
                 addLog(`Shadow (Local Translation): ${en}`);
             }
-        } catch(e) {
-            addLog(`Error during inference.`);
+        } catch(e: any) {
+            addLog(`Error during inference: ${e?.message || e}`);
         }
     };
 

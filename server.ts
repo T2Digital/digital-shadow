@@ -9,6 +9,13 @@ import { GoogleGenAI } from "@google/genai";
 import { synthesizeTrack } from "./services/musicSynthesizer";
 import { synthesizeEdgeSpeech } from "./services/edgeSpeechSynthesizer";
 
+process.on('uncaughtException', (err) => {
+    console.warn('[SERVER] Caught uncaughtException (prevented exit):', err?.message || err);
+});
+process.on('unhandledRejection', (reason) => {
+    console.warn('[SERVER] Caught unhandledRejection (prevented exit):', reason);
+});
+
 function cleanLyricsForTTS(lyricsText: string): string {
     // 1. Remove bracketed sections like [Verse], [Chorus], [اللازمة], (مقدمة), etc.
     let cleaned = lyricsText
@@ -267,7 +274,7 @@ async function setupCronJobs() {
     });
     console.log("[SYSTEM] BullMQ Proactive Cron Job registered (0 8 * * *).");
 }
-setupCronJobs();
+setupCronJobs().catch(e => console.warn("[SYSTEM] Cron job registration skipped:", e?.message));
 
 // 3. Spawn the separate Worker microservice!
 let workerProcess: ReturnType<typeof spawn>;
@@ -525,7 +532,7 @@ async function startServer() {
   "tempo": 128
 }`;
               const response = await ai.models.generateContent({
-                  model: "gemini-3.5-flash",
+                  model: "gemini-3.8-flash",
                   contents: geminiPrompt,
                   config: {
                       responseMimeType: "application/json"
@@ -778,7 +785,7 @@ async function startServer() {
               if (geminiKey) {
                   const ai = new GoogleGenAI({ apiKey: geminiKey });
                   const searchRes = await ai.models.generateContent({
-                      model: "gemini-2.5-flash",
+                      model: "gemini-3.8-flash",
                       contents: `المستخدم يريد مقارنة أسعار حقيقية ومحدثة للطلب: "${query}" في الفئة "${category}".
 ابحث واستخرج 3 عروض حقيقية بالأسعار، اسم الموقع أو شركة الطيران/الفندق/المتجر، ورابط أو كود مرجعي.
 أرجع النتيجة بصيغة JSON نظيفة فقط:
@@ -898,22 +905,6 @@ async function startServer() {
       }
   });
 
-  // --- VITE MIDDLEWARE --- //
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    // Note: express v5 handles '*all' differently if you use that!
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*all', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  }
-
   // Kapso Webhook Endpoint for WhatsApp (GET for verification)
   app.get("/api/webhooks/kapso", (req, res) => {
       const mode = req.query["hub.mode"];
@@ -921,8 +912,6 @@ async function startServer() {
       const challenge = req.query["hub.challenge"];
 
       if (mode && token) {
-          // If you set a verify token in Kapso dashboard, match it here.
-          // For now, we auto-verify to ensure it connects.
           console.log("[KAPSO] Webhook Verified!", { mode, token });
           return res.status(200).send(challenge);
       }
@@ -935,10 +924,7 @@ async function startServer() {
       
       try {
           const payload = req.body;
-          // You might need to use express.raw to verify signature, but for sandbox, parsing JSON is fine.
-          
           if (payload.object === "whatsapp_business_account") {
-              // Extract messages safely without specific library dependency
               const entries = payload.entry || [];
               for (const entry of entries) {
                   const changes = entry.changes || [];
@@ -950,7 +936,6 @@ async function startServer() {
                               const text = message.text?.body || '[Non-text message]';
                               console.log(`[KAPSO] Message from ${sender}: ${text}`);
                               
-                              // Send to worker
                               if (autonomousQueue && message.type === 'text') {
                                   await autonomousQueue.add('agent-task', {
                                       prompt: `لديك رسالة جديدة عبر واتساب من ${sender} محتواها: "${text}"\nمطلوب منك فورا الرد عليه باستخدام أداة adk_send_whatsapp_message ولا تقم بأي عمل آخر.`,
@@ -963,7 +948,6 @@ async function startServer() {
                   }
               }
           } else {
-              // Legacy Kapso format if they still use it
               const { type, data } = payload;
               if (type === 'message.received') {
                   const sender = data?.from;
@@ -982,9 +966,23 @@ async function startServer() {
           console.error("Webhook processing error:", e.message);
       }
 
-      // Always return 200 to acknowledge receipt
       res.status(200).json({ status: "success" });
   });
+
+  // --- VITE MIDDLEWARE (Mounted after all API routes) --- //
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      server: { middlewareMode: true, hmr: false },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*all', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);

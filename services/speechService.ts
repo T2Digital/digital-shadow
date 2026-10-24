@@ -150,13 +150,26 @@ class AudioStreamQueue {
     }
 }
 
+let currentHtmlAudio: HTMLAudioElement | null = null;
+
 export const audioStreamQueue = new AudioStreamQueue();
 
 export function resumeAudioContext() {
     try {
         if (!audioCtx) {
             const CtxClass = (window.AudioContext || (window as any).webkitAudioContext);
-            if (CtxClass) audioCtx = new CtxClass({ sampleRate: 24000 });
+            if (CtxClass) {
+                try {
+                    // Default to hardware sample rate for zero-distortion compatibility
+                    audioCtx = new CtxClass();
+                } catch {
+                    try {
+                        audioCtx = new CtxClass({ sampleRate: 24000 });
+                    } catch {
+                        audioCtx = null;
+                    }
+                }
+            }
         }
         if (audioCtx && (audioCtx.state === "suspended" || (audioCtx.state as string) === "interrupted")) {
             audioCtx.resume().catch(() => {});
@@ -178,6 +191,13 @@ let resumeInterval: any = null;
 export const stopVoice = async () => { 
     audioStreamQueue.stop();
     if (currentSource) { try { currentSource.stop(); } catch {} currentSource = null; } 
+    if (currentHtmlAudio) {
+        try {
+            currentHtmlAudio.pause();
+            currentHtmlAudio.currentTime = 0;
+        } catch {}
+        currentHtmlAudio = null;
+    }
     if (resumeInterval) { clearInterval(resumeInterval); resumeInterval = null; }
     
     if (Capacitor.isNativePlatform()) {
@@ -188,6 +208,7 @@ export const stopVoice = async () => {
     
     // @ts-ignore
     window.shadowUtterance = null;
+    window.dispatchEvent(new CustomEvent('shadow_audio_level', { detail: { level: 0 } }));
 };
 
 // --- ROBUST NATIVE TTS ENGINE ---
@@ -539,6 +560,44 @@ export const generateMp3FromShadowVoice = async (text: string, voice: string): P
     return { file: parsedFile, base64 };
 };
 
+const playHtml5Audio = (base64Audio: string, onAudioEnd?: () => void, onFallback?: () => void) => {
+    try {
+        const audio = new Audio(`data:audio/mp3;base64,${base64Audio}`);
+        currentHtmlAudio = audio;
+        
+        const interval = setInterval(() => {
+            if (!currentHtmlAudio) {
+                clearInterval(interval);
+                return;
+            }
+            const lvl = 0.3 + Math.random() * 0.5;
+            window.dispatchEvent(new CustomEvent('shadow_audio_level', { detail: { level: lvl } }));
+        }, 120);
+
+        audio.onended = () => {
+            clearInterval(interval);
+            currentHtmlAudio = null;
+            window.dispatchEvent(new CustomEvent('shadow_audio_level', { detail: { level: 0 } }));
+            window.dispatchEvent(new CustomEvent('shadow_voice_ended'));
+            onAudioEnd?.();
+        };
+
+        audio.onerror = () => {
+            clearInterval(interval);
+            currentHtmlAudio = null;
+            onFallback?.();
+        };
+
+        audio.play().catch(() => {
+            clearInterval(interval);
+            currentHtmlAudio = null;
+            onFallback?.();
+        });
+    } catch {
+        onFallback?.();
+    }
+};
+
 export const playShadowVoice = async (
     text: string, 
     voice: string, 
@@ -548,11 +607,6 @@ export const playShadowVoice = async (
 ) => {
     stopVoice();
     const ctx = resumeAudioContext();
-    
-    if (!ctx) { 
-        speakNative(text, voice, onEnded);
-        return; 
-    }
 
     try {
         let base64 = existing;
@@ -578,48 +632,58 @@ export const playShadowVoice = async (
             speakNative(text, voice, onEnded);
             return; 
         }
+
+        // If Web Audio context is not available, play pristine MP3 via HTML5 Audio directly
+        if (!ctx) {
+            playHtml5Audio(base64, onEnded, () => speakNative(text, voice, onEnded));
+            return;
+        }
         
-        const u8 = new Uint8Array(base64ToArrayBuffer(base64));
-        const buffer = await decodeAudioData(u8, ctx);
-        const source = ctx.createBufferSource();
-        source.buffer = buffer;
-        
-        // Add Analyser for lip-sync and face reactivity
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 256;
-        source.connect(analyser);
-        analyser.connect(ctx.destination);
-        
-        const dataArray = new Uint8Array(analyser.frequencyBinCount);
-        let animationFrame: number;
-        
-        const updateAudioLevel = () => {
-            if (!currentSource) return;
-            analyser.getByteFrequencyData(dataArray);
+        try {
+            const u8 = new Uint8Array(base64ToArrayBuffer(base64));
+            const buffer = await decodeAudioData(u8, ctx);
+            const source = ctx.createBufferSource();
+            source.buffer = buffer;
             
-            // Calculate average level
-            let sum = 0;
-            for(let i = 0; i < dataArray.length; i++) {
-                sum += dataArray[i];
-            }
-            const average = sum / dataArray.length;
-            const normalizedLevel = Math.min(1, average / 128); // 0 to 1
+            // Add Analyser for lip-sync and face reactivity
+            const analyser = ctx.createAnalyser();
+            analyser.fftSize = 256;
+            source.connect(analyser);
+            analyser.connect(ctx.destination);
             
-            window.dispatchEvent(new CustomEvent('shadow_audio_level', { detail: { level: normalizedLevel } }));
-            animationFrame = requestAnimationFrame(updateAudioLevel);
-        };
-        
-        source.onended = () => { 
-            currentSource = null; 
-            cancelAnimationFrame(animationFrame);
-            window.dispatchEvent(new CustomEvent('shadow_audio_level', { detail: { level: 0 } }));
-            window.dispatchEvent(new CustomEvent('shadow_voice_ended'));
-            onEnded?.(); 
-        };
-        
-        source.start(0);
-        currentSource = source;
-        updateAudioLevel();
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+            let animationFrame: number;
+            
+            const updateAudioLevel = () => {
+                if (!currentSource) return;
+                analyser.getByteFrequencyData(dataArray);
+                
+                let sum = 0;
+                for(let i = 0; i < dataArray.length; i++) {
+                    sum += dataArray[i];
+                }
+                const average = sum / dataArray.length;
+                const normalizedLevel = Math.min(1, average / 128);
+                
+                window.dispatchEvent(new CustomEvent('shadow_audio_level', { detail: { level: normalizedLevel } }));
+                animationFrame = requestAnimationFrame(updateAudioLevel);
+            };
+            
+            source.onended = () => { 
+                currentSource = null; 
+                cancelAnimationFrame(animationFrame);
+                window.dispatchEvent(new CustomEvent('shadow_audio_level', { detail: { level: 0 } }));
+                window.dispatchEvent(new CustomEvent('shadow_voice_ended'));
+                onEnded?.(); 
+            };
+            
+            source.start(0);
+            currentSource = source;
+            updateAudioLevel();
+        } catch (decodeErr) {
+            console.warn("WebAudio buffer decode failed, switching to HTML5 audio element:", decodeErr);
+            playHtml5Audio(base64, onEnded, () => speakNative(text, voice, onEnded));
+        }
     } catch (e) { 
         console.error("Voice Playback Error:", e); 
         speakNative(text, voice, onEnded);
@@ -678,10 +742,10 @@ export const getShadowVoice = async (text: string, voice: string): Promise<strin
         console.warn("[TTS] Edge proxy fallback:", e?.message);
     }
 
-    // 2. SECOND PATH: Gemini TTS Preview Engine
+    // 2. SECOND PATH: Gemini TTS Modern Engine (Gemini 3.8 Flash Lite TTS)
     try {
         const res = await getAI().models.generateContent({
-            model: "gemini-3.1-flash-tts-preview",
+            model: "gemini-3.8-flash-lite-tts",
             contents: [{ parts: [{ text }] }],
             config: { 
                 responseModalities: [Modality.AUDIO], 

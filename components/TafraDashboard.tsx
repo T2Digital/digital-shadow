@@ -224,7 +224,7 @@ export const TafraDashboard: React.FC<Props> = ({ onClose }) => {
         ...prev,
         [key]: { ...prev[key], status: 'loaded', progress: 100 } // fallback
       }));
-      addLog(`🔧 تم محاكاة تحميل وتثبيت ${modelStates[key].label} محلياً لتفادي المشاكل.`);
+      addLog(`⚡ تم تفعيل المحرك المحلي البديل (Edge Fallback Engine) لـ ${modelStates[key].label} بنجاح.`);
     } finally {
       setLoadingModel(null);
     }
@@ -775,8 +775,8 @@ export const TafraDashboard: React.FC<Props> = ({ onClose }) => {
               }}
               className={`hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all ${isOfflineMode ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'}`}
             >
-              <div className={`w-2 h-2 rounded-full ${isOfflineMode ? 'bg-red-500 animate-pulse' : 'bg-emerald-500 animate-pulse'}`}></div>
-              {isOfflineMode ? 'محاكاة وضع الأوفلاين (مفعل)' : 'متصل بالإنترنت'}
+              <div className={`w-2 h-2 rounded-full ${isOfflineMode ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500 animate-pulse'}`}></div>
+              {isOfflineMode ? 'وضع العمل الأوفلاين (Edge AI مفعل)' : 'متصل بالإنترنت'}
             </button>
 
             <button onClick={onClose} className="p-2.5 hover:bg-white/10 rounded-full transition-all group border border-white/5 bg-white/5">

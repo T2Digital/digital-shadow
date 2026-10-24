@@ -89,7 +89,7 @@ export const ContentMachineCard = ({ card }: { card: any }) => {
 }`;
 
             const res = await ai.models.generateContent({
-                model: 'gemini-3.7-flash',
+                model: 'gemini-3.8-flash',
                 contents: prompt,
                 config: { responseMimeType: 'application/json' }
             });

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Network, Zap, Code, BrainCircuit, Server, Settings, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
-import { localBrain } from '../../services/localBrainService';
+import { X, Network, Zap, Code, BrainCircuit, Server, Settings, CheckCircle2, AlertCircle, Loader2, Sparkles, Cpu } from 'lucide-react';
+import { localBrain, SUPPORTED_LOCAL_MODELS } from '../../services/localBrainService';
 
 interface BrainModalProps {
     onClose: () => void;
@@ -8,6 +8,7 @@ interface BrainModalProps {
 
 export const BrainRouterModal: React.FC<BrainModalProps> = ({ onClose }) => {
     const [activeBrain, setActiveBrain] = useState('router');
+    const [selectedLocalModel, setSelectedLocalModel] = useState('gemma-2-2b');
     const [isLocalReady, setIsLocalReady] = useState(localBrain.isReady());
     const [localProgress, setLocalProgress] = useState(localBrain.loadProgress);
     const [localProgressText, setLocalProgressText] = useState(localBrain.loadText);
@@ -24,8 +25,8 @@ export const BrainRouterModal: React.FC<BrainModalProps> = ({ onClose }) => {
 
     const handleLoadLocalModel = async () => {
         setIsLoadingLocal(true);
-        // Load local LLM
-        await localBrain.initModel((p, text) => {
+        // Load selected local LLM (Google Gemma / Chrome Gemini Nano / Qwen / Phi-3)
+        await localBrain.initModel(selectedLocalModel, (p, text) => {
             setLocalProgress(p);
             setLocalProgressText(text);
         });
@@ -50,11 +51,20 @@ export const BrainRouterModal: React.FC<BrainModalProps> = ({ onClose }) => {
         {
             id: 'router',
             name: 'مُوجه العقول الشامل (Brain Router)',
-            description: 'النظام يختار النموذج الأنسب تلقائياً بناءً على المهمة لتحقيق أقصى كفاءة.',
+            description: 'النظام يختار النموذج الأنسب تلقائياً (Gemini 3.8 Flash سحابياً مع التبديل التلقائي لـ Gemma أوفلاين).',
             icon: Network,
             color: 'text-indigo-400',
             bg: 'bg-indigo-500/10',
             border: 'border-indigo-500/30'
+        },
+        {
+            id: 'local',
+            name: 'نماذج جوجل المحلية (Google Gemma 2B & Gemini Nano)',
+            description: 'تشغيل نماذج الذكاء الاصطناعي أوفلاين بالكامل على كارت شاشة جهازك WebGPU للحفاظ على الخصوصية 100% وبدون نت.',
+            icon: Cpu,
+            color: 'text-cyan-400',
+            bg: 'bg-cyan-500/10',
+            border: 'border-cyan-500/30'
         },
         {
             id: 'groq',
@@ -82,15 +92,6 @@ export const BrainRouterModal: React.FC<BrainModalProps> = ({ onClose }) => {
             color: 'text-green-400',
             bg: 'bg-green-500/10',
             border: 'border-green-500/30'
-        },
-        {
-            id: 'local',
-            name: 'Edge AI (Phi-3 / Llama-3)',
-            description: 'عمل محلي بالكامل داخل متصفحك للحفاظ على الخصوصية وتقليل تكلفة الـ API والعمل بدون إنترنت.',
-            icon: Server,
-            color: 'text-cyan-400',
-            bg: 'bg-cyan-500/10',
-            border: 'border-cyan-500/30'
         }
     ];
 
@@ -107,14 +108,13 @@ export const BrainRouterModal: React.FC<BrainModalProps> = ({ onClose }) => {
                     </div>
                     <div>
                         <h2 className="text-2xl font-black text-white">محرك العقول الشامل</h2>
-                        <p className="text-indigo-200/50 text-xs font-bold uppercase tracking-widest">Universal Brain Router & Edge AI</p>
+                        <p className="text-indigo-200/50 text-xs font-bold uppercase tracking-widest">Universal Brain Router & Edge AI (Gemma 2B)</p>
                     </div>
                 </div>
 
                 <div className="bg-white/5 p-5 rounded-[24px] border border-white/5 mb-6">
                     <p className="text-sm text-white/70 leading-relaxed">
-                        هنا تحدد عقل "الظل". يمكنك ترك الخيار على "المُوجه الشامل" ليقوم الظل بتوزيع المهام تلقائياً: 
-                        المهام السريعة لـ Groq، البرمجة لـ Claude، والصياغة لـ GPT. كما يمكنك تفعيل "Edge AI" لمعالجة بياناتك محلياً لضمان خصوصية 100%.
+                        هنا تحدد عقل "الظل". يمكنك ترك الخيار على "المُوجه الشامل" ليقوم الظل بتوجيه المهام بذكاء، أو تفعيل **نماذج جوجل المدمجة (Google Gemma 2B & Gemini Nano)** ليعمل الظل بالكامل داخل متصفحك أو جهازك بدون اتصال بالإنترنت مع خصوصية مطلقة.
                     </p>
                 </div>
 
@@ -144,24 +144,38 @@ export const BrainRouterModal: React.FC<BrainModalProps> = ({ onClose }) => {
                 </div>
 
                 {activeBrain === 'local' && (
-                    <div className="mt-6 bg-cyan-900/20 p-5 rounded-2xl border border-cyan-500/30 flex items-start gap-4 transition-all">
-                        <AlertCircle className="w-6 h-6 text-cyan-400 flex-shrink-0 mt-0.5" />
-                        <div className="w-full">
-                            <h4 className="text-sm font-bold text-cyan-400 mb-1">تجهيز الذكاء الاصطناعي المحلي (Edge AI)</h4>
-                            
+                    <div className="mt-6 bg-cyan-900/20 p-5 rounded-2xl border border-cyan-500/30 flex flex-col gap-4 transition-all">
+                        <div className="flex items-center gap-3">
+                            <Sparkles className="w-5 h-5 text-cyan-400" />
+                            <h4 className="text-sm font-bold text-cyan-300">اختر نموذج العمل المحلي (Offline Edge Model):</h4>
+                        </div>
+
+                        {/* Model Selector Cards */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            {SUPPORTED_LOCAL_MODELS.map((model) => (
+                                <div
+                                    key={model.id}
+                                    onClick={() => setSelectedLocalModel(model.id)}
+                                    className={`p-3 rounded-xl border cursor-pointer transition-all ${selectedLocalModel === model.id ? 'bg-cyan-500/20 border-cyan-400 text-white shadow-[0_0_15px_rgba(6,182,212,0.2)]' : 'bg-black/40 border-white/10 text-white/70 hover:bg-white/5'}`}
+                                >
+                                    <div className="flex items-center justify-between mb-1">
+                                        <span className="font-bold text-xs">{model.name}</span>
+                                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/10 text-cyan-300">{model.size}</span>
+                                    </div>
+                                    <p className="text-[10px] text-white/50 leading-relaxed">{model.description}</p>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="w-full mt-2">
                             {!isLocalReady ? (
                                 <>
-                                    <p className="text-xs text-cyan-200/60 leading-relaxed mb-4">
-                                        سيتم استخدام WebLLM لتحميل محرك LLM خفيف (Phi-3) للعمل داخل المتصفح. 
-                                        حجم النموذج حوالي 2.2 جيجابايت، ويحتاج لكارت شاشة (GPU) حديث نسبياً للعمل بسلاسة. وسيتم تخزينه في الذاكرة المؤقتة (Cache) للعمل أوفلاين لاحقاً.
-                                    </p>
-                                    
                                     {isLoadingLocal ? (
                                         <div className="bg-black/40 rounded-xl p-4 border border-cyan-500/20">
                                             <div className="flex items-center justify-between mb-2">
                                                 <div className="flex items-center gap-2">
                                                     <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
-                                                    <span className="text-xs font-bold text-cyan-200">جاري تحميل وتجهيز النموذج...</span>
+                                                    <span className="text-xs font-bold text-cyan-200">جاري تحميل وتجهيز نموذج ({SUPPORTED_LOCAL_MODELS.find(m => m.id === selectedLocalModel)?.name})...</span>
                                                 </div>
                                                 <span className="text-xs font-mono text-cyan-400">{localProgress}%</span>
                                             </div>
@@ -173,22 +187,30 @@ export const BrainRouterModal: React.FC<BrainModalProps> = ({ onClose }) => {
                                     ) : (
                                         <button 
                                             onClick={handleLoadLocalModel}
-                                            className="px-4 py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-sm font-bold transition-all w-full flex items-center justify-center gap-2"
+                                            className="px-4 py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-sm font-bold transition-all w-full flex items-center justify-center gap-2 shadow-lg"
                                         >
                                             <Server className="w-4 h-4" />
-                                            شغّل محرك Edge AI الآن
+                                            <span>تشغيل نموذج ({SUPPORTED_LOCAL_MODELS.find(m => m.id === selectedLocalModel)?.name}) محلياً الآن</span>
                                         </button>
                                     )}
                                 </>
                             ) : (
-                                <div className="bg-cyan-950/50 rounded-xl p-4 border border-cyan-500/30 flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-full bg-cyan-500/20 flex items-center justify-center border border-cyan-500/50">
-                                        <CheckCircle2 className="w-5 h-5 text-cyan-400" />
+                                <div className="bg-cyan-950/50 rounded-xl p-4 border border-cyan-500/30 flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-cyan-500/20 flex items-center justify-center border border-cyan-500/50">
+                                            <CheckCircle2 className="w-5 h-5 text-cyan-400" />
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-bold text-cyan-100 mb-0.5">محرك Edge AI نشط ({SUPPORTED_LOCAL_MODELS.find(m => m.id === selectedLocalModel)?.name})</p>
+                                            <p className="text-[10px] text-cyan-200/60">الظل يمكنه الآن العمل بدون إنترنت ومعالجة بياناتك محلياً بشكل كامل.</p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <p className="text-sm font-bold text-cyan-100 mb-0.5">محرك Edge AI متصل وجاهز للعمل</p>
-                                        <p className="text-[10px] text-cyan-200/60">الظل يمكنه الآن العمل بدون إنترنت ومعالجة بياناتك محلياً بشكل كامل.</p>
-                                    </div>
+                                    <button 
+                                        onClick={handleLoadLocalModel}
+                                        className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white text-xs rounded-lg font-bold transition-all"
+                                    >
+                                        تغيير النموذج
+                                    </button>
                                 </div>
                             )}
                         </div>

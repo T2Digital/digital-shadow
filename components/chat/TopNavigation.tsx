@@ -54,10 +54,12 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({
                     {!isSearchActive && (
                         <div className="overflow-hidden">
                             <h1 className="text-base font-black tracking-tighter leading-none text-white whitespace-nowrap">غرفة عمليات الظل</h1>
-                            <div className="flex items-center gap-1 mt-1">
+                            <div className="flex items-center gap-1.5 mt-1">
                                 <span className={`text-[10px] font-bold truncate ${isTito ? 'text-amber-500' : 'text-purple-500'}`}>{getGreetingSubtitle()}</span>
                                 <span className="text-[10px] text-white/30">•</span>
                                 <span className={`text-[9px] font-bold uppercase tracking-widest ${isSentinelMode ? 'text-red-500 animate-pulse' : 'text-white/40'}`}>{isSentinelMode ? 'Sentinel ON' : 'Live'}</span>
+                                <span className="text-[10px] text-white/30">•</span>
+                                <span className="text-[8.5px] font-mono font-bold text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 px-1.5 py-0.5 rounded-full flex items-center gap-1 shadow-[0_0_8px_rgba(6,182,212,0.15)]">⚡ 3.8 Flash</span>
                             </div>
                         </div>
                     )}
@@ -148,7 +150,7 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({
                         <Shield className="w-4 h-4" />
                     </button>
                     
-                    <button onClick={() => setShowLiveAPIMode(true)} className="p-2 shrink-0 rounded-full bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 transition-all select-none" title="Live API (محاكاة WebRTC)">
+                    <button onClick={() => setShowLiveAPIMode(true)} className="p-2 shrink-0 rounded-full bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 text-cyan-400 transition-all select-none" title="المحادثة الحية الفورية (Live Voice & Vision)">
                         <Waves className="w-4 h-4" />
                     </button>
                     

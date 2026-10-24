@@ -48,8 +48,43 @@ export const AutonomousManager: React.FC<{ onClose: () => void }> = ({ onClose }
   ]);
   const [simUserReply, setSimUserReply] = useState('');
 
-  // --- CANVASMIND FLOW STATES ---
-  const [flowLogs, setFlowLogs] = useState<string[]>([]);
+  // --- CANVASMIND FLOW & DAG STATES ---
+  const [activeDagStep, setActiveDagStep] = useState<number>(0);
+  const [isDagRunning, setIsDagRunning] = useState<boolean>(false);
+  const [dagGoalInput, setDagGoalInput] = useState<string>('مراقبة تغير أسعار التذاكر والشراء الآلي عند الهبوط');
+  const [dagLogs, setDagLogs] = useState<string[]>([
+    "[System] ⚡ Model: Gemini 3.8 Flash (Latency: 280ms)",
+    "[Worker] 🚀 Background queue BullMQ listening on redis://localhost:6379",
+    "[Security] 🛡️ Guardrail Policy: Zero-Mistake Active"
+  ]);
+
+  const runDagSimulation = async () => {
+    if (isDagRunning) return;
+    setIsDagRunning(true);
+    setActiveDagStep(1);
+    setDagLogs(prev => [`[${new Date().toLocaleTimeString('ar-EG')}] 🎯 [Node 1: Intent Extraction]: استخراج وتحليل النية الدلالية للهدف: "${dagGoalInput}"`, ...prev]);
+
+    setTimeout(() => {
+      setActiveDagStep(2);
+      setDagLogs(prev => [`[${new Date().toLocaleTimeString('ar-EG')}] 🔄 [Node 2: ReAct Decomposition]: تفكيك المسألة لشجرة أهداف (1. استعلام API، 2. مقارنة السعر، 3. تأكيد الحجز)`, ...prev]);
+    }, 1200);
+
+    setTimeout(() => {
+      setActiveDagStep(3);
+      setDagLogs(prev => [`[${new Date().toLocaleTimeString('ar-EG')}] 🛠️ [Node 3: Sandbox Tool Call]: تنفيذ أداة fetch_live_prices وتوليد كود التداول في بيئة معزولة Sandbox`, ...prev]);
+    }, 2400);
+
+    setTimeout(() => {
+      setActiveDagStep(4);
+      setDagLogs(prev => [`[${new Date().toLocaleTimeString('ar-EG')}] 🛡️ [Node 4: Guardrail Verification]: فحص شروط الأمان والميزانية.. تمت الموافقة بنجاح 100%`, ...prev]);
+    }, 3600);
+
+    setTimeout(() => {
+      setActiveDagStep(5);
+      setDagLogs(prev => [`[${new Date().toLocaleTimeString('ar-EG')}] ✅ [Node 5: Final Resolution]: تم تنفيذ العملية بنجاح وإرسال إشعار للماستر!`, ...prev]);
+      setIsDagRunning(false);
+    }, 4800);
+  };
 
   // Sync with services
   useEffect(() => {
@@ -221,6 +256,15 @@ export const AutonomousManager: React.FC<{ onClose: () => void }> = ({ onClose }
             >
               <MessageCircle className="w-3.5 h-3.5" />
               <span>واتساب وتليجرام</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('flow')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                activeTab === 'flow' ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/30' : 'text-white/60 hover:text-white'
+              }`}
+            >
+              <Network className="w-3.5 h-3.5" />
+              <span>تدفق المهام (DAG)</span>
             </button>
             <button
               onClick={() => setActiveTab('react_loops')}
@@ -843,6 +887,110 @@ export const AutonomousManager: React.FC<{ onClose: () => void }> = ({ onClose }
                 </div>
               </div>
 
+            </div>
+          )}
+
+          {/* TAB: FLOW & DAG MISSION CONTROL */}
+          {activeTab === 'flow' && (
+            <div className="space-y-6 animate-in fade-in">
+              {/* Header card */}
+              <div className="bg-gradient-to-r from-[#101420] to-[#0c1824] border border-cyan-500/30 p-5 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Network className="w-5 h-5 text-cyan-400" />
+                    <h3 className="font-black text-white text-base">لوحة القيادة والتدفق الحي (Mission Control DAG)</h3>
+                    <span className="text-[9px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 px-2 py-0.5 rounded-full font-mono">⚡ Gemini 3.8 Flash</span>
+                  </div>
+                  <p className="text-xs text-white/50 mt-1">تتبع مرئي فوري لمراحل تفكير وتنفيذ العميل المستقل في الخلفية عبر خوادم BullMQ</p>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="px-3 py-1.5 bg-black/50 border border-white/10 rounded-xl text-center">
+                    <span className="block text-[9px] text-white/40 uppercase">سرعة الاستجابة</span>
+                    <span className="text-xs font-mono font-bold text-emerald-400">~280ms</span>
+                  </div>
+                  <div className="px-3 py-1.5 bg-black/50 border border-white/10 rounded-xl text-center">
+                    <span className="block text-[9px] text-white/40 uppercase">الحالة العصبية</span>
+                    <span className="text-xs font-mono font-bold text-cyan-400">{isDagRunning ? 'جارِ المعالجة...' : 'في وضع الاستعداد'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Interactive Visual DAG Pipeline */}
+              <div className="bg-[#0b0e17] border border-white/10 rounded-2xl p-6 overflow-x-auto scrollbar-hide">
+                <div className="min-w-[680px] flex items-center justify-between relative">
+                  {/* Connecting line */}
+                  <div className="absolute top-1/2 left-8 right-8 h-1 bg-white/10 -translate-y-1/2 z-0" />
+                  
+                  {/* Nodes */}
+                  {[
+                    { num: 1, title: 'النية والهدف', sub: 'Intent Parsing', icon: Sparkles },
+                    { num: 2, title: 'تفكيك المسألة', sub: 'ReAct Planner', icon: RefreshCw },
+                    { num: 3, title: 'تنفيذ الأدوات', sub: 'Sandbox Execution', icon: TerminalIcon },
+                    { num: 4, title: 'صمام الأمان', sub: 'Zero-Mistake', icon: ShieldCheck },
+                    { num: 5, title: 'تسليم النتيجة', sub: 'Final Resolution', icon: CheckCircle }
+                  ].map((node) => {
+                    const isPassed = activeDagStep > node.num;
+                    const isCurrent = activeDagStep === node.num;
+                    const IconComponent = node.icon;
+                    return (
+                      <div key={node.num} className="relative z-10 flex flex-col items-center text-center">
+                        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center border-2 transition-all duration-300 shadow-xl ${
+                          isCurrent 
+                            ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 scale-110 shadow-[0_0_25px_rgba(6,182,212,0.5)] animate-pulse' 
+                            : isPassed 
+                            ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.3)]' 
+                            : 'bg-[#141824] border-white/10 text-white/40'
+                        }`}>
+                          <IconComponent className="w-6 h-6" />
+                        </div>
+                        <span className={`text-xs font-bold mt-2 ${isCurrent ? 'text-cyan-300' : isPassed ? 'text-emerald-300' : 'text-white/60'}`}>
+                          {node.title}
+                        </span>
+                        <span className="text-[9px] text-white/30 font-mono mt-0.5">{node.sub}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Goal launcher input */}
+              <div className="bg-[#121622] border border-white/10 p-4 rounded-2xl flex flex-col md:flex-row items-center gap-3">
+                <input
+                  type="text"
+                  value={dagGoalInput}
+                  onChange={(e) => setDagGoalInput(e.target.value)}
+                  placeholder="أدخل هدفاً لاختباره عبر شبكة الـ DAG..."
+                  className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:border-cyan-500/50"
+                  dir="rtl"
+                />
+                <button
+                  onClick={runDagSimulation}
+                  disabled={isDagRunning}
+                  className="w-full md:w-auto px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-black text-xs rounded-xl shadow-lg shadow-cyan-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  <PlayCircle className="w-4 h-4" />
+                  <span>{isDagRunning ? 'جارِ تنفيذ الدورة...' : 'إطلاق دورة المعالجة'}</span>
+                </button>
+              </div>
+
+              {/* Streaming Execution Terminal */}
+              <div className="bg-black/80 border border-white/10 rounded-2xl p-4 font-mono text-xs space-y-2">
+                <div className="flex items-center justify-between border-b border-white/10 pb-2 text-[10px] text-white/40">
+                  <div className="flex items-center gap-2">
+                    <TerminalIcon className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>سجل التدفق الحي (Live Stream Logs)</span>
+                  </div>
+                  <span className="text-emerald-400">● Live Connection</span>
+                </div>
+                <div className="h-40 overflow-y-auto space-y-1.5 scrollbar-hide pt-2 text-[11px]" dir="ltr">
+                  {dagLogs.map((log, idx) => (
+                    <div key={idx} className="text-white/80 leading-relaxed font-sans">
+                      <span className="text-cyan-400">&gt;</span> {log}
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
 

@@ -19,7 +19,7 @@ export const generateImageNative = async (prompt: string, userKey?: string): Pro
             }
         } catch (e) {
             console.log("Failed to generate with imagen-3.0-generate-002, trying fallback", e);
-            const r = await ai.models.generateImages({ model: "gemini-3.1-flash-image-preview", prompt });
+            const r = await ai.models.generateImages({ model: "gemini-3.1-flash-image", prompt });
             if (r.generatedImages && r.generatedImages.length > 0) {
                 const img = r.generatedImages[0];
                 return `data:${img.image.mimeType};base64,${img.image.imageBytes}`;
@@ -37,11 +37,11 @@ export const generateImageNative = async (prompt: string, userKey?: string): Pro
 export const startVideoGenerationNative = async (prompt: string, userKey?: string): Promise<any> => {
     let key = userKey || (import.meta as any).env?.VITE_GEMINI_API_KEY;
     if (!key) {
-        throw new Error("API Key is required for Veo 3 / Veo 2 generation.");
+        throw new Error("API Key is required for Veo 3.1 generation.");
     }
     const ai = new GoogleGenAI({ apiKey: key, apiVersion: 'v1beta' });
     const op = await ai.models.generateVideos({
-        model: "veo-2.0-generate-001",
+        model: "veo-3.1-generate-preview",
         prompt
     });
     return op;
